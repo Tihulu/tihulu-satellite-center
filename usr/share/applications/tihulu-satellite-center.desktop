@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=TIHULU Satellite Center
+GenericName=Satellite SDR Receiver
+Comment=Exact bundled website UI with OS-native USB SDR backend
+Exec=tihulu-satellite-center desktop
+Icon=tihulu-satellite
+Terminal=false
+StartupNotify=true
+Categories=Science;Education;HamRadio;
+Keywords=RTL-SDR;SSTV;Meteor;Satellite;Debian;Radio;
