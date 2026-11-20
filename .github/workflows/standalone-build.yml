@@ -1,0 +1,57 @@
+name: Standalone source integrity, deterministic build and package
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify inventory and digests
+        run: ./build.sh verify
+      - name: Deterministic build (run 1)
+        run: ./build.sh tar
+      - name: Deterministic build (run 2) and byte-compare
+        run: |
+          set -euo pipefail
+          cp dist/installed-package-files.tar.gz /tmp/first.tar.gz
+          ./build.sh tar
+          sha256sum /tmp/first.tar.gz dist/installed-package-files.tar.gz
+          cmp /tmp/first.tar.gz dist/installed-package-files.tar.gz
+          echo "deterministic: byte-identical across two builds"
+
+  package-and-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build deterministic Debian package
+        run: ./build_deb.sh build
+      - name: Package determinism check
+        run: |
+          set -euo pipefail
+          cp dist/*.deb /tmp/first.deb
+          ./build_deb.sh build
+          cmp /tmp/first.deb dist/*.deb
+          echo "package is byte-identical across two builds"
+      - name: Verify package contents and extraction digests
+        run: ./build_deb.sh verify
+      - name: Extracted-tree smoke (no SDR, no GUI)
+        run: |
+          set -euo pipefail
+          export PYTHONDONTWRITEBYTECODE=1
+          export PYTHONPATH="$PWD/.extract/usr/share/tihulu-satellite-center"
+          python3 -c "import satellite_center; print('import OK')"
+          timeout 60 python3 -m satellite_center doctor > /tmp/doctor.json
+          python3 -c "import json;d=json.load(open('/tmp/doctor.json'));assert d['version'].startswith('0.3.0'),d;print('doctor OK', d['version'])"
+          test -z "$(find .extract -name '__pycache__' -print -quit)" && echo "no bytecode written into payload"

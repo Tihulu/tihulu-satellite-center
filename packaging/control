@@ -1,0 +1,11 @@
+Package: tihulu-satellite-center
+Version: 0.3.0~preview10
+Architecture: all
+Maintainer: TIHULU project <https://github.com/Tihulu>
+Depends: python3 (>= 3.11), python3-pyqt5, python3-pyqt5.qtwebengine, python3-numpy, python3-skyfield, rtl-sdr, xdg-utils
+Section: science
+Priority: optional
+Description: Offline-first satellite pass planning and SDR reception centre
+ Standalone build of the privately preserved 0.3.0~preview10 application source.
+ This package is a DRAFT build artifact: not released, not certified, and not
+ tested for clean installation, rollback, hardware or RF acceptance.

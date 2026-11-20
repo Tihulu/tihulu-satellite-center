@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+export PYTHONPATH="/usr/share/tihulu-satellite-center${PYTHONPATH:+:$PYTHONPATH}"
+# Prefer native Wayland in COSMIC/Pop!_OS, XWayland fallback as needed.
+if [ -n "${WAYLAND_DISPLAY:-}" ] && [ -z "${QT_QPA_PLATFORM:-}" ]; then
+ export QT_QPA_PLATFORM="wayland;xcb"
+fi
+if [ "$#" -eq 0 ]; then
+ set -- desktop
+fi
+exec /usr/bin/python3 -m satellite_center "$@"
