@@ -1,0 +1,14 @@
+# TIHULU Satellite Center
+
+**Repository initialization only — no application source, binaries, or frozen archives have been published here.**
+
+Satellite Center is an offline-first satellite pass-planning and SDR reception project. The privately preserved `0.3.0~preview10` baseline must remain unchanged. Source provenance, clean installation, actual hardware decoding, licensing, and release readiness are not yet approved.
+
+## Safety and development policy
+
+- Preserve the user's working Pop!_OS installation, external radio services, model files, settings, and recordings.
+- No SDR access, installation, replacement, system service changes, merge, or release without owner approval.
+- Public release: **HOLD**. Private preservation evidence and any private archives must remain in their authorized private storage and must not be copied to this public repository.
+- Documentation and future code changes must use isolated branches and Draft PRs until independently reviewed.
+
+Codex handoff documents will live under `docs/codex/` in a separate documentation-only Draft PR. See the private TIHULU coordination ledger only with authorized access. This README does not certify a working source release.
