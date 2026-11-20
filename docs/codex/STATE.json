@@ -1,0 +1,58 @@
+{
+  "schema": "tihulu.stable_first.codex_handoff.v1",
+  "as_of_utc": "2026-11-20",
+  "repo": "Tihulu/tihulu-satellite-center",
+  "branch": "docs/stable-first-codex-handoff-20261120",
+  "summary": "Document Satellite Center 0.3.0~preview10 private stable-first preservation without publishing any private snapshot, SDR data or installed files.",
+  "public_release": "HOLD",
+  "status": "documentation_only_candidate",
+  "stable_baseline": {
+    "name": "0.3.0~preview10",
+    "commit": null,
+    "kind": "private preserved candidate; no public source provenance certified"
+  },
+  "latest_inspected_work": {
+    "name": "Satellite stable-first combined successor (Draft PR #25, private coordination repo)",
+    "url": "https://github.com/Tihulu/tihulu-survival-kit-plan/pull/25",
+    "commit": "17a352d4974f84eae55057ab938762dc82a003c5",
+    "kind": "documentation-only reference; no code, app, archive or snapshot published here",
+    "ci": "https://github.com/Tihulu/tihulu-survival-kit-plan/actions/runs/44677008509 (SUCCESS 2/2, 74/74 disposable-HOME regressions OK)",
+    "independent_qa": "Agent 02 requested at this exact head; NOT PERFORMED",
+    "gates": {
+      "production_install": "HOLD",
+      "merge": "HOLD",
+      "public_release": "HOLD",
+      "phase_b": "HOLD"
+    }
+  },
+  "invariants": [
+    "Do not copy private stable archives, exact private file inventories, installed programs, TLE caches, recordings or local settings to public GitHub.",
+    "No installation, RTL-SDR access, model download, background service or device operation on owner host.",
+    "Preview10 preservation, private snapshot and separately installed user-web variant are distinct and must not be overwritten.",
+    "Do not claim any local release or public source was tested merely because private CI fixtures passed."
+  ],
+  "blockers": [
+    "Exact upstream source provenance and owner-approved public source boundaries",
+    "Independent clean install/rollback/uninstall and hostile archive/race audits",
+    "Actual pass planning, SDR reception, LRPT/SSTV and user desktop acceptance",
+    "Third-party libraries, city datasets, imagery/asset licenses and full release approval"
+  ],
+  "next_safe_actions": [
+    "Work from this public docs-only handoff; do not assume the current public repository contains Satellite source.",
+    "Authorized Codex agent may review separately permissioned private preservation ledger without copying artifacts into public GitHub.",
+    "Plan owner-approved source provenance and clean-room tests; keep immutable preview10 and user-web variant separated.",
+    "Only after explicit scope and license clearance, propose a source publication Draft PR; never publish private archives by default."
+  ],
+  "source_links": [
+    "https://github.com/Tihulu/tihulu-satellite-center"
+  ],
+  "evidence_policy": "Distinguish repository facts, PR author reports, independent QA and owner-host acceptance. Never invent percentages or imply CI equals actual hardware acceptance.",
+  "retrieval": {
+    "chunks": "docs/codex/KNOWLEDGE.jsonl",
+    "history": "docs/codex/HISTORY.md",
+    "builder": "docs/codex/index_local.py",
+    "keyword_index": "offline SQLite FTS5",
+    "semantic_index": "opt-in local already-installed model; not precomputed",
+    "data_egress": "none"
+  }
+}
