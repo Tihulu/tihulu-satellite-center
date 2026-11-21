@@ -79,6 +79,13 @@ PROFILES = {
     "iridium_rf_iq": {"label": "Iridium L-band 1620 MHz raw IQ candidate only; no message decode", "range": "1616M:1626.5M:50k", "freq": 1620000000, "family": "iridium"},
 }
 MODES = ("survey", "iq", "iq_and_fm_wav", "aprs", "sstv_audio", "fm_audio")
+
+# Scheduled-job state vocabulary. A record may only be removed once its capture has
+# finished; `running` is excluded because the scheduler merges the capture result
+# back into that same record after the receiver releases it.
+TERMINAL_JOB_STATES = frozenset((
+    "completed", "cancelled", "blocked", "interrupted", "missed", "error"))
+LIVE_JOB_STATES = frozenset(("pending", "running"))
 # IMPORTANT: rtl_sdr async capture versions only stop when remaining bytes
 # are LESS than a callback buffer. An exact 1 MiB request (524288 pairs)
 # is divisible by the default 262144-byte block and can run indefinitely.
@@ -1349,10 +1356,13 @@ class Station:
             raise ValueError("Pending schedule not found")
 
     def clear_job(self, job_id):
-        """Remove one finished record from the local schedule list.
+        """Remove one TERMINAL record from the local schedule list.
 
-        A pending schedule is a live reservation: it must be cancelled first, so
-        this refuses rather than silently dropping a scheduled RF capture.
+        Only a record whose capture has already finished may be removed. A
+        `pending` schedule is a live reservation, and a `running` schedule is an
+        in-progress RF capture whose result is merged back into this same record
+        when the receiver releases it: removing either would silently discard the
+        record and, for `running`, the capture's result.
         """
         if not isinstance(job_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", job_id):
             raise ValueError("A valid schedule identifier is required")
@@ -1364,17 +1374,21 @@ class Station:
                     break
             if target is None:
                 raise ValueError("Schedule not found")
-            if target.get("state") == "pending":
-                raise ValueError("Cancel a pending schedule before clearing it")
+            state = target.get("state")
+            if state not in TERMINAL_JOB_STATES:
+                raise ValueError(
+                    "A %s schedule cannot be cleared: wait for it to finish, "
+                    "or stop it first" % (state or "unknown"))
             self.jobs = [x for x in self.jobs if x.get("id") != job_id]
             self.save_jobs()
             return {"cleared": job_id, "remaining": len(self.jobs)}
 
     def clear_finished_jobs(self):
-        """Remove every non-pending record; pending schedules are untouched."""
+        """Remove every TERMINAL record; pending and running schedules stay."""
         with self.lock:
             before = len(self.jobs)
-            self.jobs = [x for x in self.jobs if x.get("state") == "pending"]
+            self.jobs = [x for x in self.jobs
+                         if x.get("state") not in TERMINAL_JOB_STATES]
             removed = before - len(self.jobs)
             if removed:
                 self.save_jobs()
@@ -2070,6 +2084,12 @@ class Handler(BaseHTTPRequestHandler):
                 result = app.cancel_auto_missions()
             elif route == "/api/cancel":
                 result = app.cancel(data.get("job_id"))
+            elif route == "/api/clear-job":
+                # Removes one terminal record; a live (pending/running) schedule is
+                # refused by the Station, never silently dropped.
+                result = app.clear_job(data.get("job_id"))
+            elif route == "/api/clear-finished-jobs":
+                result = app.clear_finished_jobs()
             elif route == "/api/capture":
                 # Must not block request thread for full capture; result via status and archive.
                 seconds = data.get("seconds", 18)
