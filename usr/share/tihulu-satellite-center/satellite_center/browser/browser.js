@@ -1693,8 +1693,12 @@ function renderNativeJobCards(){
   const bar=document.createElement('div');bar.className='line';
   const clear=document.createElement('button');clear.type='button';clear.className='secondary';
   clear.textContent='Clear '+finished.length+' finished job'+(finished.length>1?'s':'');
-  clear.title='Remove finished records from this list and the native calendar. Pending schedules are not touched.';
+  clear.title='Remove finished records from this list and the native calendar. Pending and running schedules are never dropped.';
   clear.addEventListener('click',()=>{
+   // Destructive: removing every finished audit record at once needs an explicit
+   // confirmation, the same as the Qt fallback and the serve-mode surface.
+   if(!window.confirm('Remove '+finished.length+' finished record(s) from the list and the native '
+     +'calendar? Pending and running schedules are never dropped.'))return;
    clear.disabled=true;
    window.nativeClearFinishedScheduledJobs()
     .then(()=>syncNativeScheduler())
@@ -1755,7 +1759,10 @@ function renderNativeJobCards(){
    dismiss.textContent='×';dismiss.setAttribute('aria-label','Remove this job from the list and calendar');
    dismiss.addEventListener('click',()=>{
     dismiss.disabled=true;
-    dismissNativeJob(job)
+    // dismissAction can throw synchronously (e.g. a missing bridge function);
+    // without this the button stays disabled and the user gets no feedback.
+    Promise.resolve()
+     .then(()=>dismissNativeJob(job))
      .then(()=>syncNativeScheduler())
      .catch(err=>{
       const readiness=$('schedule-readiness');
