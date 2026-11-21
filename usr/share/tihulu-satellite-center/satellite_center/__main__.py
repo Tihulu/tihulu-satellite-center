@@ -1348,6 +1348,38 @@ class Station:
                     return j
             raise ValueError("Pending schedule not found")
 
+    def clear_job(self, job_id):
+        """Remove one finished record from the local schedule list.
+
+        A pending schedule is a live reservation: it must be cancelled first, so
+        this refuses rather than silently dropping a scheduled RF capture.
+        """
+        if not isinstance(job_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", job_id):
+            raise ValueError("A valid schedule identifier is required")
+        with self.lock:
+            target = None
+            for j in self.jobs:
+                if j.get("id") == job_id:
+                    target = j
+                    break
+            if target is None:
+                raise ValueError("Schedule not found")
+            if target.get("state") == "pending":
+                raise ValueError("Cancel a pending schedule before clearing it")
+            self.jobs = [x for x in self.jobs if x.get("id") != job_id]
+            self.save_jobs()
+            return {"cleared": job_id, "remaining": len(self.jobs)}
+
+    def clear_finished_jobs(self):
+        """Remove every non-pending record; pending schedules are untouched."""
+        with self.lock:
+            before = len(self.jobs)
+            self.jobs = [x for x in self.jobs if x.get("state") == "pending"]
+            removed = before - len(self.jobs)
+            if removed:
+                self.save_jobs()
+            return {"cleared": removed, "remaining": len(self.jobs)}
+
     def start_scheduler(self):
         if self.closed.is_set():
             return

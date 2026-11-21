@@ -691,6 +691,10 @@
       window.nativeScheduleStatus=()=>lookup('status');
       window.nativeComputeStatus=()=>lookup('status').then(info=>info.compute);
       window.nativeCancelScheduledJob=job_id=>lookup('cancel_schedule',{job_id});
+      // Dismiss one finished record, or every finished record at once. Pending
+      // schedules are never dropped silently: the station refuses them.
+      window.nativeClearScheduledJob=job_id=>lookup('clear_job',{job_id});
+      window.nativeClearFinishedScheduledJobs=()=>lookup('clear_finished_jobs',{});
       window.nativeWorldOutline=()=>lookup('world_outline');
       window.nativeImportTle=text=>lookup('tle_import',{text});
       setHardwareLabels();
