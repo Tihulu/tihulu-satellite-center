@@ -215,6 +215,35 @@ const run = async () => {
   check("clear control disappears when nothing finished remains",
         !s3.buttons.some((b) => /^Clear /.test(b)), s3.buttons.join("|"));
 
+  // ---- 4) x on a PENDING schedule cancels it (never silently drops it) -------
+  await seed([
+    { id: "p9", satellite: "ISS (ZARYA)", state: "pending", run_at: "2026-11-21T16:00:00Z", capture_seconds: 60, estimated_bytes: 126700000 },
+  ]);
+  check("pending record renders alone", await refresh(1));
+  const beforeCancel = JSON.parse(await state());
+  const cancelClicked = await ev(`(() => {
+    const card = [...document.querySelectorAll('#jobs .scheduled-job')].find(c => /PENDING/.test(c.textContent));
+    const x = card && card.querySelector('button[aria-label="Remove this job from the list and calendar"]');
+    if (!x) return 'none'; x.click(); return 'clicked'; })()`);
+  check("x on pending accepted", cancelClicked === "clicked", cancelClicked);
+  for (let i = 0; i < 15; i++) {
+    await ev("window.dispatchEvent(new Event('tihulu-native-schedule-changed')); 'k'");
+    const t = await ev("document.querySelector('#jobs .scheduled-job h4') ? document.querySelector('#jobs .scheduled-job h4').textContent : ''");
+    if (/CANCELLED/.test(String(t))) break;
+    await sleep(1500);
+  }
+  await sleep(2000);
+  const afterCancel = JSON.parse(await state());
+  const cancelCalls = await ev("JSON.stringify(window.__calls.filter(c => c.command === 'cancel_schedule'))");
+  check("x on pending CANCELS it (not a silent drop)",
+        afterCancel.cards.join(" ").includes("CANCELLED"), afterCancel.cards.join("|"));
+  check("x on pending calls cancel_schedule with the id",
+        cancelCalls.includes('"job_id":"p9"'), cancelCalls);
+  check("cancelled record leaves the native calendar",
+        !afterCancel.calendarIds.includes("p9"), afterCancel.calendarIds.join(","));
+  check("no clear_job was used for a pending record",
+        !JSON.stringify(await ev("JSON.stringify(window.__calls.filter(c => c.command === 'clear_job'))")).includes('"job_id":"p9""'));
+
   log(`\n${failures === 0 ? "ALL CHECKS PASSED" : failures + " CHECK(S) FAILED"}`);
   return failures;
 };
