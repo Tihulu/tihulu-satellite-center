@@ -55,3 +55,25 @@ jobs:
           timeout 60 python3 -m satellite_center doctor > /tmp/doctor.json
           python3 -c "import json;d=json.load(open('/tmp/doctor.json'));assert d['version'].startswith('0.3.0'),d;print('doctor OK', d['version'])"
           test -z "$(find .extract -name '__pycache__' -print -quit)" && echo "no bytecode written into payload"
+
+  interactive-removal-ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Ensure a headless browser is available
+        run: |
+          set -euo pipefail
+          if ! command -v chromium-browser >/dev/null 2>&1 && ! command -v chromium >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends chromium-browser
+          fi
+          command -v chromium-browser || command -v chromium
+      - name: Set up Node (the harness uses the built-in WebSocket)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: "Interactive DOM test: scheduled-job removal (web + native code path)"
+        run: node tests/job_removal_cdp.mjs usr/share/tihulu-satellite-center
