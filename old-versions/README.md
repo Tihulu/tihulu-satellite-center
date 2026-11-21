@@ -12,6 +12,8 @@ otherwise.
 | Version | Form | Location | Size |
 |---|---|---|---|
 | `0.2.3` — Satellite Center | AppImage | **`tihulu-satellite-center`** release `v0.2.3-appimage` | 34 MB |
+| `0.3.0` — Satellite Center (native) | AppImage | `tihulu-satellite-center` release `v0.3.0-preview10-appimage` | 130 MB |
+| `0.3.0` — Satellite Center (native + scheduled-job removal) | AppImage | `tihulu-satellite-center` release `v0.3.0-preview10-job-removal` | 130 MB |
 | `0.2.3` — Flight Radar | AppImage | **`tihulu-flight-radar`** release `v0.2.3-appimage` | 230 MB |
 | `0.2.3` — Media Center | AppImage | **`tihulu-media-center`** release `v0.2.3-appimage` | 42 MB |
 | `0.2.3` — AppImage metadata | hashes + run notes | `old-versions/0.2.3-appimage/` | < 4 KB |
@@ -25,6 +27,8 @@ never trapped in another project's repository.
 | Asset | Repository | Release tag |
 |---|---|---|
 | `Tihulu_Satellite_Center-x86_64.AppImage` (34 MB, `__version__` 0.2.3) | `tihulu-satellite-center` | `v0.2.3-appimage` |
+| `Tihulu_Satellite_Center-x86_64.AppImage` (130 MB, native `0.3.0`) | `tihulu-satellite-center` | `v0.3.0-preview10-appimage` |
+| `Tihulu_Satellite_Center-0.3.0-job-removal-x86_64.AppImage` (130 MB, native `0.3.0` + scheduled-job removal) | `tihulu-satellite-center` | `v0.3.0-preview10-job-removal` |
 | `Tihulu_Flight_Radar-x86_64.AppImage` (230 MB) | `tihulu-flight-radar` | `v0.2.3-appimage` |
 | `Tihulu_Media_Center-x86_64.AppImage` (42 MB) | `tihulu-media-center` | `v0.2.3-appimage` |
 
