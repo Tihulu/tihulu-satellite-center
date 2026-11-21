@@ -71,9 +71,16 @@ const run = async () => {
   await sleep(7000);
 
   // ---- CDP client -------------------------------------------------------------
-  const list = await (await fetch(`http://127.0.0.1:${CDP}/json/list`)).json();
-  const target = list.find((t) => t.type === "page");
-  if (!target) throw new Error("no chromium page target");
+  let target = null;
+  for (let i = 0; i < 60; i++) {                 // browser startup is variable
+    try {
+      const list = await (await fetch(`http://127.0.0.1:${CDP}/json/list`)).json();
+      target = list.find((t) => t.type === "page") || null;
+      if (target) break;
+    } catch {}
+    await sleep(1000);
+  }
+  if (!target) throw new Error(`no chromium page target on ${CDP} after 60 s`);
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
   let id = 0; const pending = new Map();
