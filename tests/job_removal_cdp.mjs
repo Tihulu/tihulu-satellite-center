@@ -50,13 +50,16 @@ const run = async () => {
     "--port", String(PORT)], {
     env: { ...process.env, PYTHONPATH: APP_ROOT, HOME: home, TMPDIR: data,
            TIHULU_SATELLITE_DATA: data, PYTHONDONTWRITEBYTECODE: "1" },
-    stdio: "ignore", detached: false,
+    stdio: ["ignore", "ignore", "pipe"], detached: false,
   });
   cleanup.push(server);
-  for (let i = 0; i < 40; i++) {
-    try { const r = await fetch(`http://127.0.0.1:${PORT}/browser/index.html`); if (r.ok) break; } catch {}
+  server.stderr.on("data", (d) => process.stderr.write("[serve] " + d));
+  let up = false;
+  for (let i = 0; i < 180; i++) {           // cold imports (numpy/skyfield) can take a while
+    try { const r = await fetch(`http://127.0.0.1:${PORT}/browser/index.html`); if (r.ok) { up = true; break; } } catch {}
     await sleep(500);
   }
+  if (!up) throw new Error(`serve never answered on ${PORT} (appRoot=${APP_ROOT})`);
   const profile = mkdtempSync(join(tmpdir(), "sat-cdp-prof-"));
   cleanup.push(profile);
   const browser = spawn("chromium-browser", [
