@@ -11,22 +11,30 @@ otherwise.
 
 | Version | Form | Location | Size |
 |---|---|---|---|
-| `0.2.3` — portable AppImage | AppImage set of three apps | **GitHub Release `v0.2.3-appimage`** (assets) | 34 + 230 + 42 MB |
-| `0.2.3` — metadata | `SHA256SUMS`, `RUN.txt`, `MANIFEST.txt` | this directory | < 4 KB |
-| `0.3.0~preview10` — frozen package | `.tar.gz` + exact inventory + package metadata | this directory | 692 KB |
-| `0.3.0~preview10` — hardened installer candidate | source + 5 regression suites + CI workflow | `candidate/` | ~150 KB |
+| `0.2.3` — Satellite Center | AppImage | **`tihulu-satellite-center`** release `v0.2.3-appimage` | 34 MB |
+| `0.2.3` — Flight Radar | AppImage | **`tihulu-flight-radar`** release `v0.2.3-appimage` | 230 MB |
+| `0.2.3` — Media Center | AppImage | **`tihulu-media-center`** release `v0.2.3-appimage` | 42 MB |
+| `0.2.3` — AppImage metadata | hashes + run notes | `old-versions/0.2.3-appimage/` | < 4 KB |
+| `0.3.0~preview10` — frozen package | `.tar.gz` + exact inventory + package metadata | `old-versions/0.3.0-preview10/` | 692 KB |
+| `0.3.0~preview10` — hardened installer candidate | source + 5 regression suites + CI workflow | `old-versions/0.3.0-preview10/candidate/` | ~150 KB |
+
+Each app's binary lives in **its own repository's release** (Satellite Center here, Flight
+Radar in `tihulu-flight-radar`, Media Center in `tihulu-media-center`), so a snapshot is
+never trapped in another project's repository.
+
+| Asset | Repository | Release tag |
+|---|---|---|
+| `Tihulu_Satellite_Center-x86_64.AppImage` (34 MB, `__version__` 0.2.3) | `tihulu-satellite-center` | `v0.2.3-appimage` |
+| `Tihulu_Flight_Radar-x86_64.AppImage` (230 MB) | `tihulu-flight-radar` | `v0.2.3-appimage` |
+| `Tihulu_Media_Center-x86_64.AppImage` (42 MB) | `tihulu-media-center` | `v0.2.3-appimage` |
+
+The 0.2.3 Satellite Center build is the one shown in the 2026-11-21 hardware screenshot
+(real NESDR SMArt v5, 0bda:2838, native rtl_sdr).
 
 ### Why the AppImages live in a Release, not this directory
 Git cannot store files larger than 100 MB, so the 230 MB `Tihulu_Flight_Radar` AppImage
-cannot be a directory file. GitHub Release assets support up to 2 GB, so all three
-AppImages are attached to the release `v0.2.3-appimage` and linked from here:
-
-- `Tihulu_Satellite_Center-x86_64.AppImage` (34 MB) — version 0.2.3, the build shown in the
-  2026-11-21 hardware screenshot (real NESDR SMArt v5, 0bda:2838, native rtl_sdr)
-- `Tihulu_Flight_Radar-x86_64.AppImage` (230 MB)
-- `Tihulu_Media_Center-x86_64.AppImage` (42 MB)
-
-Download link: `<repo>/releases/tag/v0.2.3-appimage`
+cannot be a directory file. GitHub Release assets support up to 2 GB, so each binary is
+attached to a release **in its own repository** and linked from the table above.
 
 ## Install / run
 
