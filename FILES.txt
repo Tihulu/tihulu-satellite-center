@@ -28,6 +28,8 @@ usr/share/tihulu-satellite-center/satellite_center/browser/index.html
 usr/share/tihulu-satellite-center/satellite_center/browser/iq_analysis.mjs
 usr/share/tihulu-satellite-center/satellite_center/browser/iq_analysis_ui.mjs
 usr/share/tihulu-satellite-center/satellite_center/browser/iq_intelligence.mjs
+usr/share/tihulu-satellite-center/satellite_center/browser/job_removal.mjs
+usr/share/tihulu-satellite-center/satellite_center/browser/job_removal.test.mjs
 usr/share/tihulu-satellite-center/satellite_center/browser/leaflet.LICENSE.txt
 usr/share/tihulu-satellite-center/satellite_center/browser/leaflet.css
 usr/share/tihulu-satellite-center/satellite_center/browser/leaflet.js
@@ -83,4 +85,5 @@ usr/share/tihulu-satellite-center/satellite_center/native_web_shell.py
 usr/share/tihulu-satellite-center/satellite_center/npu_sstv.py
 usr/share/tihulu-satellite-center/satellite_center/planning_store.py
 usr/share/tihulu-satellite-center/satellite_center/sstv_series35.py
+usr/share/tihulu-satellite-center/satellite_center/test_job_removal.py
 usr/share/tihulu-satellite-center/satellite_center/window_visibility.py

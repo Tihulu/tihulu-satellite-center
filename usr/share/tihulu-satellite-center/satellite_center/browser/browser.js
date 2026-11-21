@@ -11,6 +11,7 @@ import { protocolsForPass, protocolCategories, passesFilteredByContent } from '.
 import {readUserProfiles} from './saved_satellite_protocols.mjs';
 import { selectAutomaticPasses, AUTO_TARGETS } from './auto_mission.mjs?v=20261106-iss-npu-release-v1';
 import {localDayKey,shiftCalendarDay,renderSatelliteCalendar} from './satellite_calendar.mjs?v=20261106-calendar-zip-v2';
+import {dismissAction,finishedJobs,pendingJobs} from './job_removal.mjs';
 import { localDateInput, parseLocalScheduleTime, createScheduledPass, evaluateScheduledJob, secondsToJob, captureLevelSummary } from './schedule_controller.mjs?v=20261106-direct-fm-wav-v1';
 import {planChainedCapture,secondsFromEntry,humanCountdown,scheduledOverlap} from './chained_capture.mjs?v=20261107-chained-v1';
 import {candidateFromPass,readPlanningCandidates,savePlanningCandidate,removePlanningCandidate} from './pass_candidates.mjs';
@@ -1658,9 +1659,33 @@ $('browser-calendar-next').addEventListener('click',()=>{
  paintBrowserCalendar(true);renderPredictedPassCalendar();
 });
 
+function dismissNativeJob(job){
+ // Removing a scheduled record must clear it from the armed list AND the native
+ // calendar, so every path ends in one scheduler refresh.
+ const action=dismissAction(job,window);
+ return action.call();
+}
 function renderNativeJobCards(){
  const container=$('jobs');
  container.replaceChildren();
+ const finished=finishedJobs(nativeScheduledJobs);
+ if(finished.length&&window.nativeClearFinishedScheduledJobs){
+  const bar=document.createElement('div');bar.className='line';
+  const clear=document.createElement('button');clear.type='button';clear.className='secondary';
+  clear.textContent='Clear '+finished.length+' finished job'+(finished.length>1?'s':'');
+  clear.title='Remove finished records from this list and the native calendar. Pending schedules are not touched.';
+  clear.addEventListener('click',()=>{
+   clear.disabled=true;
+   window.nativeClearFinishedScheduledJobs()
+    .then(()=>syncNativeScheduler())
+    .catch(err=>{
+     const readiness=$('schedule-readiness');
+     if(readiness)readiness.textContent='Clear failed: '+String(err?.message||err);
+     clear.disabled=false;
+    });
+  });
+  bar.append(clear);container.append(bar);
+ }
  if(!nativeScheduledJobs.length){
   const empty=document.createElement('p');empty.className='hint';
   empty.textContent='No native RF recordings scheduled. Predicted passes appear in the orbital calendar below, not as recorded data.';
@@ -1692,10 +1717,30 @@ function renderNativeJobCards(){
     cancel.disabled=true;
     window.nativeCancelScheduledJob(String(job.id))
      .then(()=>syncNativeScheduler()).catch(err=>{
-      $('schedule-readiness').textContent='Cancellation failed: '+err.message;
+      const readiness=$('schedule-readiness');
+      if(readiness)readiness.textContent='Cancellation failed: '+String(err?.message||err);
       cancel.disabled=false;
      });
    });card.append(cancel);
+  }
+  if(window.nativeClearScheduledJob){
+   // Dismiss this entry from the list; the scheduler refresh also removes it from
+   // the native calendar, so list and calendar never disagree.
+   const dismiss=document.createElement('button');dismiss.type='button';
+   dismiss.className='secondary';dismiss.title=(job.state==='pending'
+     ?'Cancel this pending schedule and remove it from the list and calendar'
+     :'Remove this finished record from the list and calendar');
+   dismiss.textContent='×';dismiss.setAttribute('aria-label','Remove this job from the list and calendar');
+   dismiss.addEventListener('click',()=>{
+    dismiss.disabled=true;
+    dismissNativeJob(job)
+     .then(()=>syncNativeScheduler())
+     .catch(err=>{
+      const readiness=$('schedule-readiness');
+      if(readiness)readiness.textContent='Removal failed: '+String(err?.message||err);
+      dismiss.disabled=false;
+     });
+   });card.append(dismiss);
   }
   container.append(card);
  }

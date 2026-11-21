@@ -167,6 +167,7 @@ class NativeReceiver(QObject):
             "capture","auto","auto_cancel","schedule","refresh","passes","geocode",
             "tle_catalog","orbit_snapshot","pass_preview","tle_custom","world_outline","tle_import",
             "cancel_schedule","plan_candidates","plan_candidate_add","plan_candidate_remove",
+            "clear_job","clear_finished_jobs",
         }:
             self.reply.emit(request_id,json.dumps({
                 "ok":False,"error":"Native command is not allowlisted"}))
@@ -354,6 +355,12 @@ class NativeReceiver(QObject):
             if not isinstance(job_id,str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,40}",job_id):
                 raise ValueError("Select a valid native pending job")
             return st.cancel(job_id)
+        if command=="clear_job":
+            # Dismiss one finished record (cancelled/completed/blocked). A pending
+            # schedule is refused by the station: cancel it first.
+            return st.clear_job(args.get("job_id"))
+        if command=="clear_finished_jobs":
+            return st.clear_finished_jobs()
         if command=="pass_preview":
             lat=float(args.get("lat"));lon=float(args.get("lon"))
             norad=args.get("norad")
