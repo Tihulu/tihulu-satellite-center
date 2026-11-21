@@ -1,0 +1,6 @@
+{
+  "Package": "tihulu-satellite-center",
+  "Architecture": "all",
+  "Version": "0.3.0~preview10",
+  "Depends": "python3 (>= 3.11), python3-pyqt5, python3-pyqt5.qtwebengine, python3-numpy, python3-skyfield, rtl-sdr, xdg-utils"
+}
