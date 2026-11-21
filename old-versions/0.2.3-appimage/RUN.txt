@@ -1,0 +1,61 @@
+TIHULU — Taşınabilir AppImage Dağıtımı
+Tarih: 2026-11-21
+=============================================================
+
+BU KLASÖRDEKİLER
+  Tihulu_Satellite_Center-x86_64.AppImage   34 MB
+  Tihulu_Flight_Radar-x86_64.AppImage      230 MB
+  Tihulu_Media_Center-x86_64.AppImage       42 MB
+
+NASIL ÇALIŞTIRILIR
+  chmod +x "Dosya-Adı.AppImage"
+  ./"Dosya-Adı.AppImage"
+
+  İlk kez çalıştırmada çalıştırma izni isteyebilir. AppImage formatı
+  kurulum gerektirmez; uygulama kendi içinde taşınabilir bir Python
+  (Satellite/Flight) veya kendi Qt/KDE/VLC kütüphanelerini (Media)
+  birlikte getirir. Başka bilgisayarda açılabilir.
+
+MASAÜSTÜ KISAYOLU (isteğe bağlı)
+  Uygulamalar menüde görünsün isterseniz:
+    ./Dosya-Adı.AppImage --appimage-extract   # geçici 'squashfs-root' oluşur
+    squashfs-root/usr/share/applications/*.desktop dosyasını
+    ~/.local/share/applications/ içine kopyalayın ve içindeki
+    Exec/Icon satırını AppImage'in tam yolu ile düzeltin.
+  (Kısayol olmadan da dosyaya çift tıklayarak çalışır.)
+
+UYUUMLULUK
+  - Satellite Center  : Ubuntu 22.04 ve sonrası (Python 3.13 + venv eklentileri
+                        glibc 2.27'ye kadar sınırlı; çok geniş uyumluluk)
+  - Flight Radar      : Ubuntu 22.04 ve sonrası (Python 3.12 + PySide6,
+                        en yüksek glibc ihtiyacı 2.34)
+  - Media Center      : Ubuntu 22.04 ve sonrası. KDE Kaffeine 5.115 ile
+                        derlenmiş uygulama, Ubuntu 22.04 KF5 5.92 ile
+                        çalışacak şekilde paketlendi: eksik 2 API sembolü
+                        için küçük bir uyumluluk katmanı (libkf5compat.so)
+                        ve güncel libstdc++ eklenmiştir.
+  - Hedef: 64-bit Intel/AMD (x86-64) Linux, masaüstü oturumu.
+
+GİZLİLİK
+  - Paketlerde kullanıcı adı, ev dizini yolu, oturum/oturum açma bilgisi,
+    çekirdek anahtarları (pages-pairing.key), kişisel veritabanları ve
+    kayıt klasörleri YOKTUR.
+  - Her uygulama ayarlarını ve verilerini HER KULLANICININ kendi
+    ev dizininde oluşturur (ilk çalışmada).
+  - Yerel orijinal kurulumunuz ve yedekleriniz değiştirilmemiştir.
+
+BİLİNEN SINIRLAMALAR
+  - Media Center: DVB kanal taraması için harici 'welle-cli' aracı
+    pakete dahil değildir; DVB oynatma ve çevrimdışı medya çalışır.
+  - Flight Radar: tar1090 harita dosyalarını ilk çalışmada indirir.
+  - Satellite Center: tarayıcı açmak için sistemin varsayılan tarayıcısını
+    kullanır.
+
+DOĞRULAMA
+  SHA256SUMS dosyasındaki toplamlarla bütünlüğü kontrol edin:
+    cd bu_klasor && sha256sum -c SHA256SUMS
+
+  Üç uygulama da kullanıcı evinden bağımsız izole bir ortamda
+  çalıştırılarak doğrulanmıştır.
+  Derleme araçları ve ara dosyalar: '../.appimage-build/' (gizli klasör),
+  gerekmiyorsa silinebilir.
