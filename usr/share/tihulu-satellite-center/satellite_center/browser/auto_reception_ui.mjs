@@ -215,6 +215,16 @@ export function initAutoReceptionUI({getSelectedFile=()=>null,fileInput=$("local
           message("Cancelled only "+job.satellite+"'s pending capture.");
           await refreshNativeCalendar();
         }catch(e){message("Unable to cancel job: "+e.message);}
+      },
+      onRemove:async job=>{
+        // Finished records may be removed from the calendar; live (pending/running)
+        // schedules are refused by the server, never silently dropped.
+        if(!nativeHost())return;
+        try{
+          await nativeApi("/api/clear-job",{job_id:job.id});
+          message("Removed the finished record for "+job.satellite+".");
+          await refreshNativeCalendar();
+        }catch(e){message("Unable to remove record: "+e.message);}
       }
     });
   }
@@ -227,6 +237,17 @@ export function initAutoReceptionUI({getSelectedFile=()=>null,fileInput=$("local
   });
   $("auto-calendar-refresh").addEventListener("click",()=>{
     void refreshNativeCalendar().catch(e=>message("Calendar refresh unavailable: "+e.message));
+  });
+  $("auto-calendar-clear-finished").addEventListener("click",async()=>{
+    if(!nativeHost())return;
+    const finished=(calendarJobs||[]).filter(j=>["completed","cancelled","blocked","interrupted","missed","error"].includes(j?.state));
+    if(!finished.length){message("No finished records to clear.");return;}
+    if(!window.confirm("Remove "+finished.length+" finished record(s)? Pending and running schedules stay."))return;
+    try{
+      const result=await nativeApi("/api/clear-finished-jobs",{});
+      message("Cleared "+result.cleared+" finished record(s); "+result.remaining+" schedule(s) remain.");
+      await refreshNativeCalendar();
+    }catch(e){message("Unable to clear finished records: "+e.message);}
   });
   void refreshNativeCalendar().catch(e=>message("Calendar unavailable: "+e.message));
 

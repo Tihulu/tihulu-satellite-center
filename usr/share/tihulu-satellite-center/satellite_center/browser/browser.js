@@ -1644,6 +1644,26 @@ function paintBrowserCalendar(force=false){
        }
        browserCalendarSignature='';renderJobs();
      }
+   },
+   onRemove:job=>{
+    // A finished record may be removed from the calendar directly; it disappears
+    // from the armed list too, because every path ends in one scheduler refresh.
+    if(nativeMode()){
+     if(!window.nativeClearScheduledJob)return;
+     window.nativeClearScheduledJob(String(job.id)).then(()=>{
+      void syncNativeScheduler();
+     }).catch(err=>{
+      const r=$('schedule-readiness');
+      if(r)r.textContent='Removal failed: '+String(err?.message||err);
+     });return;
+    }
+     if(job.state==='cancelled'||job.state==='completed'||job.state==='blocked'){
+       for(const related of jobs.filter(j=>j.id===job.id)){
+         related.message='Record removed by operator.';
+       }
+       jobs=jobs.filter(j=>j.id!==job.id);
+       browserCalendarSignature='';renderJobs();
+     }
    }
  });
 }
@@ -1723,7 +1743,9 @@ function renderNativeJobCards(){
      });
    });card.append(cancel);
   }
-  if(window.nativeClearScheduledJob){
+  // A `running` capture has no dismiss control: nothing safe can be done to it
+  // except wait for the receiver to release it.
+  if(window.nativeClearScheduledJob&&(finishedJobs([job]).length||job.state==='pending')){
    // Dismiss this entry from the list; the scheduler refresh also removes it from
    // the native calendar, so list and calendar never disagree.
    const dismiss=document.createElement('button');dismiss.type='button';

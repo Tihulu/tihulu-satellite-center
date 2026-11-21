@@ -68,7 +68,7 @@ class JobRemovalTests(unittest.TestCase):
 
     def test_pending_schedule_is_refused_not_dropped(self):
         store = Store([job("a", "pending")])
-        with self.assertRaisesRegex(ValueError, "Cancel a pending schedule"):
+        with self.assertRaisesRegex(ValueError, "A pending schedule cannot be cleared"):
             store.clear_job("a")
         self.assertEqual(len(store.jobs), 1)
         self.assertEqual(store.save_calls, 0)
@@ -88,6 +88,56 @@ class JobRemovalTests(unittest.TestCase):
         self.assertEqual(result, {"cleared": 3, "remaining": 2})
         self.assertEqual([j["id"] for j in store.jobs], ["a", "d"])
         self.assertEqual(store.save_calls, 1)
+
+    def test_running_capture_is_never_cleared(self):
+        """A `running` record is an in-progress capture whose result is merged back
+        into the same dict when the receiver releases it. Removing it would lose
+        the record and the result, so it must be refused."""
+        store = Store([job("r", "running"), job("p", "pending"),
+                       job("c", "completed")])
+        with self.assertRaisesRegex(ValueError, "A running schedule cannot be cleared"):
+            store.clear_job("r")
+        self.assertEqual(len(store.jobs), 3)          # nothing dropped
+        self.assertEqual(store.save_calls, 0)          # nothing persisted
+        result = store.clear_finished_jobs()
+        self.assertEqual(result, {"cleared": 1, "remaining": 2})
+        self.assertEqual([j["id"] for j in store.jobs], ["r", "p"])
+
+    def test_every_terminal_state_is_removable(self):
+        for state in sorted(main.TERMINAL_JOB_STATES):
+            store = Store([job("t", state)])
+            store.clear_job("t")
+            self.assertEqual(store.jobs, [], state)
+
+    def test_bulk_clear_removes_every_terminal_state(self):
+        rows = [job("t%d" % i, state)
+                for i, state in enumerate(sorted(main.TERMINAL_JOB_STATES))]
+        rows += [job("live-p", "pending"), job("live-r", "running")]
+        store = Store(rows)
+        result = store.clear_finished_jobs()
+        self.assertEqual(result["cleared"], len(main.TERMINAL_JOB_STATES))
+        self.assertEqual([j["id"] for j in store.jobs], ["live-p", "live-r"])
+
+    def test_bridge_routes_match_the_terminal_vocabulary(self):
+        shell = open(APP / "native_web_shell.py", encoding="utf-8").read()
+        self.assertIn('"clear_job","clear_finished_jobs"', shell)
+        self.assertIn('st.clear_job(args.get("job_id"))', shell)
+        self.assertIn('st.clear_finished_jobs()', shell)
+        # the HTTP serve surface carries the same commands
+        http = open(APP / "__main__.py", encoding="utf-8").read()
+        self.assertIn('route == "/api/clear-job"', http)
+        self.assertIn('route == "/api/clear-finished-jobs"', http)
+
+    def test_ui_terminal_vocabulary_matches_the_backend(self):
+        mod = open(APP / "browser" / "job_removal.mjs", encoding="utf-8").read()
+        self.assertIn('export const TERMINAL_JOB_STATES', mod)
+        self.assertIn('"running"', mod)               # live, never removed
+        for state in main.TERMINAL_JOB_STATES:
+            self.assertIn('"%s"' % state, mod, state)
+        ui = open(APP / "browser" / "satellite_calendar.mjs", encoding="utf-8").read()
+        self.assertIn("onRemove", ui)
+        # the calendar's cancel control must cover `running`, not the non-existent "armed"
+        self.assertIn('["pending","running"]', ui)
 
     def test_bulk_clear_is_a_noop_without_finished_records(self):
         store = Store([job("a", "pending")])

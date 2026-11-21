@@ -29,7 +29,7 @@ from PyQt5.QtWidgets import (
     QDialog, QDialogButtonBox, QToolButton, QMenu, QListWidget, QListWidgetItem
 )
 
-from .__main__ import Station, PROFILES, LOCATIONS, AUTO_DOWNLINK_PROFILES, allowed_mode
+from .__main__ import Station, PROFILES, LOCATIONS, AUTO_DOWNLINK_PROFILES, allowed_mode, TERMINAL_JOB_STATES
 from .capture_budget import MAX_IQ_BYTES
 from .native_analysis import analyze_cu8, save_spectrum_report, export_results_zip
 from .native_data_labels import describe_local_file
@@ -2304,6 +2304,9 @@ class SatelliteWindow(QMainWindow):
         self._row(body,
                   self._button("Cancel selected pending job",self.cancel_job),
                   self._button("Edit selected automatic job",self.edit_auto_job))
+        self._row(body,
+                  self._button("Remove selected record",self.remove_job_record),
+                  self._button("Clear finished records",self.clear_finished_records))
         self._calendar_jobs=[]
         self.calendar_countdown=self._hint("Next scheduled RF job: none")
         body.addWidget(self.calendar_countdown)
@@ -3542,6 +3545,46 @@ class SatelliteWindow(QMainWindow):
         self._task("Edit automatic pass",lambda:self.station.edit_auto_schedule(
             job["id"],start,options.currentData(),dur.value() or None),
             lambda result:self.refresh_status())
+
+    def _job_feedback(self,text):
+        if hasattr(self,"job_note"):self.job_note.setText(text)
+        self.statusBar().showMessage(text,15000)
+
+    def remove_job_record(self):
+        item=self.job_list.currentItem()
+        if not item:
+            self._job_feedback("Select a finished record to remove first. "
+                               "Pending and running schedules stay until they finish.")
+            return
+        job_id=item.data(0,Qt.UserRole)
+        job=next((j for j in self._calendar_jobs if j["id"]==job_id),None)
+        state=(job or {}).get("state","")
+        if state not in TERMINAL_JOB_STATES:
+            self._job_feedback("A %s schedule cannot be removed: wait for it to finish, "
+                               "or stop it first."%(state or "unknown"))
+            return
+        self._task("Remove job record",lambda:self.station.clear_job(job_id),
+                   lambda result:self.refresh_status())
+
+    def clear_finished_records(self):
+        if QMessageBox.question(
+                self,"Clear finished records",
+                "Remove all completed, cancelled, blocked, interrupted, missed and failed "
+                "RF records from the local schedule list? Pending and running schedules "
+                "are always kept.",
+                QMessageBox.Yes|QMessageBox.No)!=QMessageBox.Yes:return
+        def finished(result):
+            report=result if isinstance(result,dict) else {}
+            cleared=int(report.get("cleared") or 0)
+            remaining=int(report.get("remaining") or 0)
+            self._job_feedback(
+                "Removed "+str(cleared)+" finished record(s); "+str(remaining)+
+                " schedule(s) still listed." if cleared else
+                "No finished record to remove; "+str(remaining)+
+                " schedule(s) still listed.")
+            self.refresh_status()
+        self._task("Clear finished records",self.station.clear_finished_jobs,finished,
+                   silent=True)
 
     def _capture_modes(self):
         key=self.capture_profile.currentData()
