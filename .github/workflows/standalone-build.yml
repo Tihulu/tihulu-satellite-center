@@ -135,3 +135,30 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
           QT_QPA_PLATFORM: offscreen
         run: timeout 600 python3 -u tests/test_desktop_removal.py
+
+  native-shell-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install the Qt desktop runtime the exact shell needs
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            python3-pyqt5 python3-pyqt5.qtwebengine python3-numpy
+          python3 -c "from PyQt5 import QtWebEngineWidgets, QtWebChannel; print('QtWebEngine + QtWebChannel OK')"
+      - name: "Real WebChannel shell smoke (real QWebEngineView, real bridge, offscreen)"
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QTWEBENGINE_CHROMIUM_FLAGS: "--no-sandbox --disable-gpu --disable-software-rasterizer --disable-dev-shm-usage"
+          PYTHONPATH: "${{ github.workspace }}/usr/share/tihulu-satellite-center"
+          PYTHONDONTWRITEBYTECODE: "1"
+          HOME: "${{ runner.temp }}/sat-shell-home"
+          TIHULU_SATELLITE_DATA: "${{ runner.temp }}/sat-shell-data"
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME" "$TIHULU_SATELLITE_DATA"
+          timeout 300 python3 -u -c "import sys; from satellite_center.native_web_shell import main; sys.exit(main(['--smoke']))"
