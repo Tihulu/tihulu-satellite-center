@@ -138,20 +138,24 @@ class JobRemovalTests(unittest.TestCase):
 
     def test_a_failed_save_rolls_the_list_back(self):
         """A save failure must not leave the live list without the record while the
-        caller is told the operation failed."""
-        store = Store([job("a", "completed"), job("b", "pending")])
-        store.save_calls = 0
+        caller is told the operation failed — for every kind of failure, not only a
+        full disk (the review's rollback-is-OSError-only watch item)."""
+        for failure in (OSError("disk full"), TypeError("unserialisable record"),
+                        RuntimeError("volume ejected")):
+            store = Store([job("a", "completed"), job("b", "pending")])
 
-        def boom(self):
-            raise OSError("disk full")
+            def boom(self, _exc=failure):
+                raise _exc
 
-        store.save_jobs = boom.__get__(store)
-        with self.assertRaises(OSError):
-            store.clear_job("a")
-        self.assertEqual([j["id"] for j in store.jobs], ["a", "b"])
-        with self.assertRaises(OSError):
-            store.clear_finished_jobs()
-        self.assertEqual([j["id"] for j in store.jobs], ["a", "b"])
+            store.save_jobs = boom.__get__(store)
+            with self.assertRaises(type(failure)):
+                store.clear_job("a")
+            self.assertEqual([j["id"] for j in store.jobs], ["a", "b"],
+                             "single clear must roll back on %s" % type(failure).__name__)
+            with self.assertRaises(type(failure)):
+                store.clear_finished_jobs()
+            self.assertEqual([j["id"] for j in store.jobs], ["a", "b"],
+                             "bulk clear must roll back on %s" % type(failure).__name__)
 
     def test_clear_responses_are_unambiguous(self):
         """Single removal reports the id, bulk reports a count: same intent must not

@@ -1389,8 +1389,10 @@ class Station:
             self.jobs = [x for x in self.jobs if x.get("id") != job_id]
             try:
                 self.save_jobs()
-            except OSError:
-                self.jobs = previous      # the caller is told it failed; so be it
+            except Exception:
+                # Any persistence failure (disk, serialization) rolls the list back:
+                # the caller is told it failed, so the live view must agree.
+                self.jobs = previous
                 raise
             return {"cleared_id": job_id, "remaining": len(self.jobs)}
 
@@ -1410,7 +1412,7 @@ class Station:
             if removed:
                 try:
                     self.save_jobs()
-                except OSError:
+                except Exception:
                     self.jobs = previous
                     raise
             return {"cleared": removed, "remaining": len(self.jobs)}

@@ -3573,8 +3573,14 @@ class SatelliteWindow(QMainWindow):
             self._job_feedback("A %s schedule cannot be removed: wait for it to finish, "
                                "or stop it first."%(state or "unknown"))
             return
-        self._task("Remove job record",lambda:self.station.clear_job(job_id),
-                   lambda result:self.refresh_status())
+        def removed(result):
+            report=result if isinstance(result,dict) else {}
+            self._job_feedback("Removed the record for "+
+                               str(job.get("satellite") or "this satellite")+"; "+
+                               str(report.get("remaining", len(self._calendar_jobs)-1))+
+                               " schedule(s) still listed.")
+            self.refresh_status()
+        self._task("Remove job record",lambda:self.station.clear_job(job_id),removed)
 
     def clear_finished_records(self):
         if not any(j.get("state") in TERMINAL_JOB_STATES for j in self._calendar_jobs):
