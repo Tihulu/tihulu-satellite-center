@@ -165,6 +165,14 @@ const run = async () => {
       cb({ objects: { nativeReceiver: receiver } });
     };
   `;
+  // Inject only once the document can accept a <script>: on a loaded runner the
+  // page sometimes has no <head>/<body> yet, and the bridge's appendChild then
+  // throws (a startup race that used to surface as a flaky harness error).
+  for (let i = 0; i < 90; i++) {
+    if ((await ev("document.readyState")) === "complete" &&
+        await ev("Boolean(document.head && document.body)")) break;
+    await sleep(1000);
+  }
   await ev(stub);
   await ev(bridge);
   await sleep(2500);
