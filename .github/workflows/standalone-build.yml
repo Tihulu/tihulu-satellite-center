@@ -17,6 +17,15 @@ jobs:
           persist-credentials: false
       - name: Verify inventory and digests
         run: ./build.sh verify
+      - name: Python unit tests (removal state gating, vocabulary, wiring)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -v \
+            -s usr/share/tihulu-satellite-center/satellite_center \
+            -t usr/share/tihulu-satellite-center \
+            -p "test_job_removal.py"
       - name: Deterministic build (run 1)
         run: ./build.sh tar
       - name: Deterministic build (run 2) and byte-compare
@@ -75,6 +84,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Node unit tests (removal module + USB diagnostics)
+        run: |
+          set -euo pipefail
+          node --test \
+            usr/share/tihulu-satellite-center/satellite_center/browser/job_removal.test.mjs \
+            usr/share/tihulu-satellite-center/satellite_center/browser/usb_diagnostics.test.mjs
       - name: "Interactive DOM test: scheduled-job removal (web + native code path)"
         run: node tests/job_removal_cdp.mjs usr/share/tihulu-satellite-center
 
