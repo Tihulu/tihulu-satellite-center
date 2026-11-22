@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const {dismissAction, finishedJobs, pendingJobs} = await import("./job_removal.mjs");
+const {dismissAction, finishedJobs, pendingJobs, TERMINAL_JOB_STATES, LIVE_JOB_STATES,
+  BROWSER_LIVE_JOB_STATES, isBrowserLiveState} = await import("./job_removal.mjs");
 
 test("dismissing a pending schedule cancels it instead of dropping the record", () => {
   const calls = [];
@@ -38,6 +39,17 @@ test("an invalid job is refused", () => {
   const bridge = {nativeCancelScheduledJob: () => Promise.resolve(), nativeClearScheduledJob: () => Promise.resolve()};
   assert.throws(() => dismissAction(null, bridge), /scheduled job/);
   assert.throws(() => dismissAction({state: "cancelled"}, bridge), /scheduled job/);
+});
+
+test("the browser scheduler's live states are recognised, not treated as terminal", () => {
+  // the WebUSB scheduler uses its own names; they must never be removable
+  for (const state of BROWSER_LIVE_JOB_STATES) {
+    assert.ok(isBrowserLiveState(state), state);
+    assert.ok(!TERMINAL_JOB_STATES.includes(state), state);
+  }
+  assert.ok(!isBrowserLiveState("completed"));
+  // the native vocabulary stays its own answer
+  assert.deepEqual([...LIVE_JOB_STATES], ["pending", "running"]);
 });
 
 test("bulk clear separates finished records from live reservations", () => {

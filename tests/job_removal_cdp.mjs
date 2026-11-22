@@ -154,8 +154,9 @@ const run = async () => {
           if (command === "status") return ok({ jobs: window.__jobs });
           if (command === "plan_candidates") return ok({ candidates: [] });
           if (command === "clear_job") {
+            // same response shape as the real Station (see test_clear_responses_are_unambiguous)
             window.__jobs = window.__jobs.filter((j) => j.id !== a.job_id);
-            return ok({ cleared: a.job_id, remaining: window.__jobs.length });
+            return ok({ cleared_id: a.job_id, remaining: window.__jobs.length });
           }
           if (command === "clear_finished_jobs") {
             window.__jobs = window.__jobs.filter((j) => j.state === "pending");

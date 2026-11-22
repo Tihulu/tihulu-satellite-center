@@ -13,8 +13,19 @@ export const TERMINAL_JOB_STATES = Object.freeze([
   "completed", "cancelled", "blocked", "interrupted", "missed", "error",
 ]);
 
-/** States that still hold a live reservation or an in-progress capture. */
+/** States that still hold a live reservation or an in-progress capture.
+ *  This is the native/serve vocabulary (Station states). */
 export const LIVE_JOB_STATES = Object.freeze(["pending", "running"]);
+
+/** Live states of the browser (WebUSB) scheduler, which uses its own names.
+ *  Kept separate so a caller never mistakes them for terminal records, and so
+ *  `isLiveState()` stays an answer about the native vocabulary only. */
+export const BROWSER_LIVE_JOB_STATES = Object.freeze(["armed", "starting"]);
+
+/** True for a live record on the browser (WebUSB) scheduler. */
+export function isBrowserLiveState(state) {
+  return BROWSER_LIVE_JOB_STATES.includes(String(state || ""));
+}
 
 export function isTerminalState(state) {
   return TERMINAL_JOB_STATES.includes(String(state || ""));

@@ -1649,8 +1649,16 @@ function paintBrowserCalendar(force=false){
     // A finished record may be removed from the calendar directly; it disappears
     // from the armed list too, because every path ends in one scheduler refresh.
     if(nativeMode()){
-     if(!window.nativeClearScheduledJob)return;
-     window.nativeClearScheduledJob(String(job.id)).then(()=>{
+     // Route through the shared dismissing logic: it maps a live state to
+     // cancellation instead of a confusing "cannot be cleared" error, and it
+     // surfaces a missing bridge instead of silently doing nothing.
+     let action=null;
+     try{action=dismissAction(job,window);}catch(err){
+      const r=$('schedule-readiness');
+      if(r)r.textContent='Removal unavailable: '+String(err?.message||err);
+      return;
+     }
+     action.call().then(()=>{
       void syncNativeScheduler();
      }).catch(err=>{
       const r=$('schedule-readiness');
@@ -1661,11 +1669,14 @@ function paintBrowserCalendar(force=false){
      // offers this control for every terminal state, so a `missed` record used to
      // get a control that silently did nothing at all.
      if(TERMINAL_JOB_STATES.includes(job.state)){
-       for(const related of jobs.filter(j=>j.id===job.id)){
-         related.message='Record removed by operator.';
-       }
        jobs=jobs.filter(j=>j.id!==job.id);
        browserCalendarSignature='';renderJobs();
+     }else{
+       // A record whose state changed after render is never silently ignored.
+       const r=$('schedule-readiness');
+       if(r)r.textContent='This schedule is live now ('+String(job.state||'unknown')+
+         '); it can no longer be removed. Wait for it to finish, or stop it first.';
+       renderJobs();
      }
    }
  });
@@ -1708,8 +1719,8 @@ function renderNativeJobCards(){
     .catch(err=>{
      const readiness=$('schedule-readiness');
      if(readiness)readiness.textContent='Clear failed: '+String(err?.message||err);
-     clear.disabled=false;
-    });
+    })
+    .finally(()=>{clear.disabled=false;});
   });
   bar.append(clear);container.append(bar);
  }
@@ -1770,8 +1781,8 @@ function renderNativeJobCards(){
      .catch(err=>{
       const readiness=$('schedule-readiness');
       if(readiness)readiness.textContent='Removal failed: '+String(err?.message||err);
-      dismiss.disabled=false;
-     });
+     })
+     .finally(()=>{dismiss.disabled=false;});
    });card.append(dismiss);
   }
   container.append(card);

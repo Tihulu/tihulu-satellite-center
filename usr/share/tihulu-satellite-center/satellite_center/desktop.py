@@ -3562,8 +3562,13 @@ class SatelliteWindow(QMainWindow):
                                "Pending and running schedules stay until they finish.")
             return
         job_id=item.data(0,Qt.UserRole)
-        job=next((j for j in self._calendar_jobs if j["id"]==job_id),None)
-        state=(job or {}).get("state","")
+        job=next((j for j in self._calendar_jobs if j.get("id")==job_id),None)
+        if job is None:
+            # The list moved on since it was drawn: say so instead of blaming the state.
+            self._job_feedback("That record is no longer listed. "
+                               "Refresh the list and pick a finished record again.")
+            return
+        state=job.get("state","")
         if state not in TERMINAL_JOB_STATES:
             self._job_feedback("A %s schedule cannot be removed: wait for it to finish, "
                                "or stop it first."%(state or "unknown"))
@@ -3572,9 +3577,13 @@ class SatelliteWindow(QMainWindow):
                    lambda result:self.refresh_status())
 
     def clear_finished_records(self):
+        if not any(j.get("state") in TERMINAL_JOB_STATES for j in self._calendar_jobs):
+            self._job_feedback("No finished record to remove; "+
+                               str(len(self._calendar_jobs))+" schedule(s) still listed.")
+            return
         if QMessageBox.question(
                 self,"Clear finished records",
-                "Remove all completed, cancelled, blocked, interrupted, missed and failed "
+                "Remove all completed, cancelled, blocked, interrupted, missed and error "
                 "RF records from the local schedule list? Pending and running schedules "
                 "are always kept.",
                 QMessageBox.Yes|QMessageBox.No)!=QMessageBox.Yes:return
