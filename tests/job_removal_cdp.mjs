@@ -29,6 +29,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const APP_ROOT = process.argv[2] || "../usr/share/tihulu-satellite-center";
+// Seed dates relative to *now*, so the calendar (which shows the local day) always
+// shows the seeded records regardless of when the harness runs.
+// The calendar shows the LOCAL day, so seed in local time, not UTC.
+const _now = new Date();
+const TODAY = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
+const at = (h, m = 0) => `${TODAY}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
 const PORT = 8830;
 // A fresh CDP port per run: stale browser instances must never be adopted.
 const CDP = 9400 + Math.floor(Math.random() * 400);
@@ -129,6 +135,9 @@ const run = async () => {
     };
     window.__calls = [];
     window.__jobs = [];
+    // The bulk clear asks for confirmation (a destructive action); the harness
+    // auto-accepts, which is the operator's intended choice under test.
+    window.confirm = () => true;
     window.qt = { webChannelTransport: { send: () => {}, onmessage: null } };
     window.QWebChannel = function (transport, cb) {
       const receiver = { reply: { connect: () => {} }, __cb: null,
@@ -179,9 +188,9 @@ const run = async () => {
 
   // ---- 1) controls appear, counts are right -----------------------------------
   await seed([
-    { id: "a1", satellite: "ISS (ZARYA)", state: "pending", run_at: "2026-11-21T16:00:00Z", capture_seconds: 60, estimated_bytes: 126700000 },
-    { id: "a2", satellite: "METEOR-M 2", state: "completed", run_at: "2026-11-21T08:00:00Z", capture_seconds: 90, estimated_bytes: 190000000 },
-    { id: "a3", satellite: "METEOR-M 2", state: "cancelled", run_at: "2026-11-21T08:30:00Z", capture_seconds: 90, estimated_bytes: 190000000 },
+    { id: "a1", satellite: "ISS (ZARYA)", state: "pending", run_at: at(16), capture_seconds: 60, estimated_bytes: 126700000 },
+    { id: "a2", satellite: "METEOR-M 2", state: "completed", run_at: at(8), capture_seconds: 90, estimated_bytes: 190000000 },
+    { id: "a3", satellite: "METEOR-M 2", state: "cancelled", run_at: at(8, 30), capture_seconds: 90, estimated_bytes: 190000000 },
   ]);
   check("all three records render", await refresh(3));
   const s1 = JSON.parse(await state());
@@ -224,7 +233,7 @@ const run = async () => {
 
   // ---- 4) x on a PENDING schedule cancels it (never silently drops it) -------
   await seed([
-    { id: "p9", satellite: "ISS (ZARYA)", state: "pending", run_at: "2026-11-21T16:00:00Z", capture_seconds: 60, estimated_bytes: 126700000 },
+    { id: "p9", satellite: "ISS (ZARYA)", state: "pending", run_at: at(16), capture_seconds: 60, estimated_bytes: 126700000 },
   ]);
   check("pending record renders alone", await refresh(1));
   const beforeCancel = JSON.parse(await state());
@@ -250,6 +259,46 @@ const run = async () => {
         !afterCancel.calendarIds.includes("p9"), afterCancel.calendarIds.join(","));
   check("no clear_job was used for a pending record",
         !JSON.stringify(await ev("JSON.stringify(window.__calls.filter(c => c.command === 'clear_job'))")).includes('"job_id":"p9""'));
+
+  // ---- 5) a RUNNING capture is never offered for removal --------------------
+  await seed([
+    { id: "r1", satellite: "ISS (ZARYA)", state: "running", run_at: at(10), capture_seconds: 600, estimated_bytes: 1200000000 },
+    { id: "c1", satellite: "ISS (ZARYA)", state: "completed", run_at: at(9), capture_seconds: 90, estimated_bytes: 190000000 },
+  ]);
+  check("running record renders", await refresh(2));
+  const s5 = JSON.parse(await state());
+  check("bulk control ignores a running capture (counts terminal only)",
+        s5.buttons.filter((b) => /^Clear /.test(b)).join("") === "Clear 1 finished job",
+        s5.buttons.join("|"));
+  const runningCardButtons = await ev(`
+    (() => { const card = [...document.querySelectorAll('#jobs .scheduled-job')].find(c => /RUNNING/.test(c.textContent));
+             return card ? [...card.querySelectorAll('button')].map(b => b.textContent.trim()).join(';') : 'no-card'; })()`);
+  check("a running card carries no dismiss control", !runningCardButtons.includes("×"), runningCardButtons);
+  const runningCalendar = await ev(`
+    (() => { const card = [...document.querySelectorAll('#browser-calendar-grid .sat-calendar-job')].find(c => c.dataset.jobId === 'r1');
+             return card ? [...card.querySelectorAll('button')].map(b => b.textContent.trim()).join(';') : 'no-card'; })()`);
+  check("a running calendar card offers cancel only, never removal",
+        runningCalendar.includes("Cancel job") && !runningCalendar.includes("Remove record"), runningCalendar);
+
+  // ---- 6) removing a finished record FROM THE CALENDAR ----------------------
+  const calendarRemoved = await ev(`
+    (() => {
+      const card = [...document.querySelectorAll('#browser-calendar-grid .sat-calendar-job')].find(c => c.dataset.jobId === 'c1');
+      const btn = card && card.querySelector('button[aria-label="Remove this job from the list and calendar"]');
+      if (!btn) return 'no-remove-control'; btn.click(); return 'clicked'; })()`);
+  check("calendar remove control exists for finished records", calendarRemoved === "clicked", calendarRemoved);
+  for (let i = 0; i < 15; i++) {
+    await ev("window.dispatchEvent(new Event('tihulu-native-schedule-changed')); 'k'");
+    if (!String(await ev("[...document.querySelectorAll('#jobs .scheduled-job h4')].map(h=>h.textContent).join(' ')")).includes("COMPLETED")) break;
+    await sleep(1500);
+  }
+  await sleep(2500);
+  const s6 = JSON.parse(await state());
+  const calClearCalls = await ev("JSON.stringify(window.__calls.filter(c => c.command === 'clear_job'))");
+  check("calendar removal drops the record from the list", !s6.cards.join(" ").includes("COMPLETED"), s6.cards.join("|"));
+  check("calendar removal drops the record from the calendar too", !s6.calendarIds.includes("c1"), s6.calendarIds.join(","));
+  check("calendar removal calls clear_job", calClearCalls.includes('"job_id":"c1"'), calClearCalls);
+  check("the running capture survives the calendar removal", s6.calendarIds.includes("r1"), s6.calendarIds.join(","));
 
   log(`\n${failures === 0 ? "ALL CHECKS PASSED" : failures + " CHECK(S) FAILED"}`);
   return failures;
