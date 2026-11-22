@@ -141,6 +141,18 @@ class JobRemovalTests(unittest.TestCase):
         # the tag must be unique to this module
         self.assertEqual(len([n for n, t in imports if t == tagged["job_removal.mjs"]]), 1)
 
+    def test_browser_mode_removal_uses_the_same_terminal_set(self):
+        """The calendar offers removal for every terminal state, so the browser-mode
+        (WebUSB) handler must accept the same set — a three-state list left `missed`
+        records with a control that silently did nothing."""
+        ui = open(APP / "browser" / "browser.js", encoding="utf-8").read()
+        start = ui.find("onRemove:job=>{")
+        end = ui.find("browserCalendarDay.addEventListener", start)
+        handler = ui[start:end]
+        self.assertIn("TERMINAL_JOB_STATES.includes(job.state)", handler)
+        for state in main.TERMINAL_JOB_STATES:
+            self.assertNotIn("job.state==='%s'" % state, handler, state)
+
     def test_ui_terminal_vocabulary_matches_the_backend(self):
         mod = open(APP / "browser" / "job_removal.mjs", encoding="utf-8").read()
         self.assertIn('export const TERMINAL_JOB_STATES', mod)
