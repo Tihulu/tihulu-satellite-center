@@ -2307,6 +2307,9 @@ class SatelliteWindow(QMainWindow):
         self._row(body,
                   self._button("Remove selected record",self.remove_job_record),
                   self._button("Clear finished records",self.clear_finished_records))
+        self.job_action_note=self._hint("Removing a job is permanent: finished records only. "
+                                        "Pending and running schedules are never dropped.")
+        body.addWidget(self.job_action_note)
         self._calendar_jobs=[]
         self.calendar_countdown=self._hint("Next scheduled RF job: none")
         body.addWidget(self.calendar_countdown)
@@ -3547,7 +3550,9 @@ class SatelliteWindow(QMainWindow):
             lambda result:self.refresh_status())
 
     def _job_feedback(self,text):
-        if hasattr(self,"job_note"):self.job_note.setText(text)
+        # A dedicated label: the shared job_note hint is rewritten by every
+        # calendar render, which used to erase this result message immediately.
+        if hasattr(self,"job_action_note"):self.job_action_note.setText(text)
         self.statusBar().showMessage(text,15000)
 
     def remove_job_record(self):
