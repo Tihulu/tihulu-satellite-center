@@ -1658,11 +1658,14 @@ function paintBrowserCalendar(force=false){
       if(r)r.textContent='Removal unavailable: '+String(err?.message||err);
       return;
      }
+     let removed=false;
      action.call().then(()=>{
+      removed=true;
       void syncNativeScheduler();
      }).catch(err=>{
       const r=$('schedule-readiness');
-      if(r)r.textContent='Removal failed: '+String(err?.message||err);
+      if(r)r.textContent=(removed?'Removed, but refreshing the list failed: ':'Removal failed: ')
+        +String(err?.message||err);
      });return;
     }
      // Same terminal vocabulary as the backend and the native path. The calendar
@@ -1673,10 +1676,11 @@ function paintBrowserCalendar(force=false){
        browserCalendarSignature='';renderJobs();
      }else{
        // A record whose state changed after render is never silently ignored.
+       // Re-render first: a repaint must not be able to erase this message.
+       renderJobs();
        const r=$('schedule-readiness');
        if(r)r.textContent='This schedule is live now ('+String(job.state||'unknown')+
          '); it can no longer be removed. Wait for it to finish, or stop it first.';
-       renderJobs();
      }
    }
  });
@@ -1714,11 +1718,13 @@ function renderNativeJobCards(){
    if(!window.confirm('Remove '+finished.length+' finished record(s) from the list and the native '
      +'calendar? Pending and running schedules are never dropped.'))return;
    clear.disabled=true;
+   let cleared=false;
    window.nativeClearFinishedScheduledJobs()
-    .then(()=>syncNativeScheduler())
+    .then(()=>{cleared=true;syncNativeScheduler();})
     .catch(err=>{
      const readiness=$('schedule-readiness');
-     if(readiness)readiness.textContent='Clear failed: '+String(err?.message||err);
+     if(readiness)readiness.textContent=(cleared?'Cleared, but refreshing the list failed: ':'Clear failed: ')
+       +String(err?.message||err);
     })
     .finally(()=>{clear.disabled=false;});
   });
@@ -1775,12 +1781,14 @@ function renderNativeJobCards(){
     dismiss.disabled=true;
     // dismissAction can throw synchronously (e.g. a missing bridge function);
     // without this the button stays disabled and the user gets no feedback.
+    let dismissed=false;
     Promise.resolve()
      .then(()=>dismissNativeJob(job))
-     .then(()=>syncNativeScheduler())
+     .then(()=>{dismissed=true;syncNativeScheduler();})
      .catch(err=>{
       const readiness=$('schedule-readiness');
-      if(readiness)readiness.textContent='Removal failed: '+String(err?.message||err);
+      if(readiness)readiness.textContent=(dismissed?'Removed, but refreshing the list failed: ':'Removal failed: ')
+        +String(err?.message||err);
      })
      .finally(()=>{dismiss.disabled=false;});
    });card.append(dismiss);

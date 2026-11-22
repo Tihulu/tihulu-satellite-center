@@ -112,6 +112,9 @@ def main():
     check("removing a finished record drops it from the persisted store",
           wait_until(app, lambda: ids(station) == ["d2"]), ids(station))
     pump(app, 2)
+    check("a single removal reports its outcome in the dedicated label",
+          window.job_action_note.text().startswith("Removed the record for ISS (ZARYA); "),
+          window.job_action_note.text())
     check("the job list follows the store",
           window.job_list.topLevelItemCount() == 1 and
           window.job_list.topLevelItem(0).data(0, Qt.UserRole) == "d2",
