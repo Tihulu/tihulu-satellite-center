@@ -41,6 +41,11 @@ const CDP = 9400 + Math.floor(Math.random() * 400);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log(...a);
 let failures = 0;
+// A snap-confined chromium cannot be signalled from the harness (EPERM), so a plain
+// kill() leaks one browser per run. The DevTools protocol can close it politely, so
+// do that first and only then fall back to a signal (works for non-snap builds).
+let closeBrowser = async () => {};
+
 const check = (name, ok, detail = "") => {
   log((ok ? "PASS " : "FAIL ") + name + (detail ? " :: " + detail : ""));
   if (!ok) failures++;
@@ -107,6 +112,7 @@ const run = async () => {
       m.error ? p.rej(new Error(JSON.stringify(m.error))) : p.res(m.result);
     }
   };
+  closeBrowser = async () => { try { await send("Browser.close"); } catch {} };
   const send = (method, params = {}) => new Promise((res, rej) => {
     const n = ++id; pending.set(n, { res, rej }); ws.send(JSON.stringify({ id: n, method, params }));
   });
@@ -313,5 +319,14 @@ const run = async () => {
 };
 
 run()
-  .then((f) => { for (const c of cleanup) { try { c.kill ? c.kill() : rmSync(c, { recursive: true, force: true }); } catch {} } process.exit(f === 0 ? 0 : 1); })
-  .catch((e) => { console.error("HARNESS ERROR:", e.message); for (const c of cleanup) { try { c.kill ? c.kill() : rmSync(c, { recursive: true, force: true }); } catch {} } process.exit(2); });
+  .then(async (f) => {
+    await closeBrowser();
+    for (const c of cleanup) { try { c.kill ? c.kill() : rmSync(c, { recursive: true, force: true }); } catch {} }
+    process.exit(f === 0 ? 0 : 1);
+  })
+  .catch(async (e) => {
+    console.error("HARNESS ERROR:", e.message);
+    await closeBrowser();
+    for (const c of cleanup) { try { c.kill ? c.kill() : rmSync(c, { recursive: true, force: true }); } catch {} }
+    process.exit(2);
+  });
