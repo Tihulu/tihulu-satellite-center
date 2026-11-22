@@ -11,6 +11,7 @@ import json
 import sys
 import tempfile
 import threading
+import re
 import unittest
 from pathlib import Path
 import types
@@ -128,6 +129,18 @@ class JobRemovalTests(unittest.TestCase):
         self.assertIn('route == "/api/clear-job"', http)
         self.assertIn('route == "/api/clear-finished-jobs"', http)
 
+    def test_new_module_import_carries_a_cache_buster(self):
+        """Every recently versioned sibling import in browser.js carries ?v=...
+        so a cached context cannot keep serving a stale removal module."""
+        src = open(APP / "browser" / "browser.js", encoding="utf-8").read()
+        imports = re.findall(r"from ['\"]\./(\w+\.mjs)(\?v=[^'\"]*)?['\"]", src)
+        tagged = {name: tag for name, tag in imports if tag}
+        self.assertIn("job_removal.mjs", tagged,
+                      "job_removal.mjs must be imported with a cache-buster")
+        self.assertTrue(tagged["job_removal.mjs"].startswith("?v="))
+        # the tag must be unique to this module
+        self.assertEqual(len([n for n, t in imports if t == tagged["job_removal.mjs"]]), 1)
+
     def test_ui_terminal_vocabulary_matches_the_backend(self):
         mod = open(APP / "browser" / "job_removal.mjs", encoding="utf-8").read()
         self.assertIn('export const TERMINAL_JOB_STATES', mod)
@@ -157,7 +170,8 @@ class JobRemovalTests(unittest.TestCase):
 
     def test_removal_routing_module_is_wired_into_the_ui(self):
         ui = (APP / "browser" / "browser.js").read_text()
-        self.assertIn("from './job_removal.mjs'", ui)
+        # the import must carry the cache-buster the versioned siblings use
+        self.assertIn("from './job_removal.mjs?v=", ui)
         self.assertIn("dismissAction", ui)
         self.assertIn("finishedJobs(nativeScheduledJobs)", ui)
         self.assertIn("navigate to the native calendar", ui) if False else None
