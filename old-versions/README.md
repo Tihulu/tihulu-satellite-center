@@ -15,8 +15,9 @@ otherwise.
 | `0.3.0` — Satellite Center (native) | AppImage | `tihulu-satellite-center` release `v0.3.0-preview10-appimage` | 130 MB |
 | `0.3.0` — Satellite Center (native + scheduled-job removal) | AppImage | `tihulu-satellite-center` release `v0.3.0-preview10-job-removal` | 130 MB |
 | `0.3.0` — Satellite Center (native + scheduled-job removal, **rev. 2**) | AppImage | `tihulu-satellite-center` release `v0.3.0-preview10-job-removal-r2` | 130 MB |
+| `0.3.0` — Satellite Center (native + scheduled-job removal, **rev. 3**) | AppImage | `tihulu-satellite-center` release `v0.3.0-preview10-job-removal-r3` | 130 MB |
 
-> Use **rev. 2**: the earlier job-removal build could clear a `running` RF capture (losing the record and its result) and lacked removal controls on the HTTP serve mode and the Qt-widgets desktop fallback.
+> Use **rev. 3**: the earliest job-removal build could clear a `running` RF capture (losing the record and its result) and lacked removal controls on the HTTP serve mode and the Qt-widgets desktop fallback; rev. 2 fixed both but still cleared all finished records on a single misclick. Rev. 3 confirms the destructive bulk clear, keeps the button alive on a removal error, and loads the removal module with the same cache-buster as its siblings.
 | `0.2.3` — Flight Radar | AppImage | **`tihulu-flight-radar`** release `v0.2.3-appimage` | 230 MB |
 | `0.2.3` — Media Center | AppImage | **`tihulu-media-center`** release `v0.2.3-appimage` | 42 MB |
 | `0.2.3` — AppImage metadata | hashes + run notes | `old-versions/0.2.3-appimage/` | < 4 KB |
