@@ -18,8 +18,9 @@ otherwise.
 | `0.3.0` — Satellite Center (native + scheduled-job removal, **rev. 3**) | AppImage | `tihulu-satellite-center` release `v0.3.0-preview10-job-removal-r3` | 130 MB |
 | `0.3.0` — Satellite Center (native + scheduled-job removal, **rev. 4**) | AppImage | `tihulu-satellite-center` release `v0.3.0-preview10-job-removal-r4` | 130 MB |
 | `0.3.0` — Satellite Center (native + scheduled-job removal, **rev. 5**) | AppImage | `tihulu-satellite-center` release `v0.3.0-preview10-job-removal-r5` | 130 MB |
+| `0.3.0` — Satellite Center (native + scheduled-job removal, **rev. 6**) | AppImage | `tihulu-satellite-center` release `v0.3.0-preview10-job-removal-r6` | 130 MB |
 
-> Use **rev. 5**: the earliest job-removal build could clear a `running` RF capture (losing the record and its result) and lacked removal controls on the HTTP serve mode and the Qt-widgets desktop fallback; rev. 2 fixed both; rev. 3 confirmed the destructive bulk clear; rev. 4 fixed the Qt fallback's removal result message being erased by the calendar render; **rev. 5** loads the removal module with the cache-buster its versioned siblings use (no stale code in cached contexts).
+> Use **rev. 6**: the earliest job-removal build could clear a `running` RF capture (losing the record and its result) and lacked removal controls on the HTTP serve mode and the Qt-widgets desktop fallback; rev. 2 fixed both; rev. 3 confirmed the destructive bulk clear; rev. 4 fixed the Qt fallback's removal result message being erased by the calendar render; rev. 5 added the cache-buster on the removal module import; **rev. 6** makes the standalone web path accept the same terminal states as the backend (a `missed` record used to get a control that silently did nothing).
 | `0.2.3` — Flight Radar | AppImage | **`tihulu-flight-radar`** release `v0.2.3-appimage` | 230 MB |
 | `0.2.3` — Media Center | AppImage | **`tihulu-media-center`** release `v0.2.3-appimage` | 42 MB |
 | `0.2.3` — AppImage metadata | hashes + run notes | `old-versions/0.2.3-appimage/` | < 4 KB |
