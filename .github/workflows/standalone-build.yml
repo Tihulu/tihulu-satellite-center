@@ -99,3 +99,24 @@ jobs:
           node-version: "22"
       - name: "Interactive DOM test: scheduled-job removal (HTTP serve surface, real Station backend)"
         run: node tests/serve_removal_cdp.mjs usr/share/tihulu-satellite-center
+
+  desktop-removal-surface:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install the Qt desktop runtime the fallback needs
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            python3-pyqt5 python3-numpy
+          python3 -c "import PyQt5.QtWidgets; print('PyQt5 OK')"
+      - name: "Behavioural test: scheduled-job removal on the Qt fallback (real window, real Station)"
+        env:
+          SAT_APP_ROOT: "${{ github.workspace }}/usr/share/tihulu-satellite-center"
+          PYTHONDONTWRITEBYTECODE: "1"
+          QT_QPA_PLATFORM: offscreen
+        run: timeout 600 python3 -u tests/test_desktop_removal.py
