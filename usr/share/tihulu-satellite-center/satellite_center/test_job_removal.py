@@ -61,7 +61,7 @@ class JobRemovalTests(unittest.TestCase):
     def test_finished_record_is_removed_and_persisted(self):
         store = Store([job("a", "completed"), job("b", "cancelled")])
         result = store.clear_job("a")
-        self.assertEqual(result, {"cleared": "a", "remaining": 1})
+        self.assertEqual(result, {"cleared_id": "a", "remaining": 1})
         self.assertEqual([j["id"] for j in store.jobs], ["b"])
         self.assertEqual(store.save_calls, 1)
         raw = json.loads((store.directory / "schedule.json").read_text())
@@ -103,6 +103,65 @@ class JobRemovalTests(unittest.TestCase):
         result = store.clear_finished_jobs()
         self.assertEqual(result, {"cleared": 1, "remaining": 2})
         self.assertEqual([j["id"] for j in store.jobs], ["r", "p"])
+
+    def test_every_state_writer_holds_the_same_lock(self):
+        """The independent review asked for exactly this audit: a clear can only be
+        race-safe if every writer that mutates a job's state (scheduler transitions,
+        cancellation, the capture-result merge) acquires the same lock the clear paths
+        hold. Encode it as a test so the discipline cannot silently regress."""
+        src = (APP / "__main__.py").read_text().split("\n")
+        mutates = (re.compile(r"^self\.jobs\s*(=|append|remove)"),
+                   re.compile(r"\.update\(\s*state\s*="),
+                   re.compile('\\[\\s*["\']state["\']\\s*\\]\\s*='))
+        checked = 0
+        for number, line in enumerate(src):
+            body = line.strip()
+            if not any(m.search(body) for m in mutates):
+                continue
+            if "session" in body:
+                continue          # the capture session is not the schedule record
+            start = None
+            for i in range(number, -1, -1):        # the enclosing method body
+                if src[i].startswith("    def "):
+                    start = i
+                    break
+            assert start is not None, "mutation outside a method: %s" % body
+            enclosing_method = src[start].strip()
+            if enclosing_method.startswith("def __init__"):
+                continue          # the constructor runs before any worker exists
+            body_lines = src[start:number]
+            assert any("with self.lock" in l for l in body_lines), (
+                "state mutation without self.lock at line %d: %s (%s)"
+                % (number + 1, body, enclosing_method[:40]))
+            checked += 1
+        self.assertGreaterEqual(checked, 8, checked)
+
+    def test_a_failed_save_rolls_the_list_back(self):
+        """A save failure must not leave the live list without the record while the
+        caller is told the operation failed."""
+        store = Store([job("a", "completed"), job("b", "pending")])
+        store.save_calls = 0
+
+        def boom(self):
+            raise OSError("disk full")
+
+        store.save_jobs = boom.__get__(store)
+        with self.assertRaises(OSError):
+            store.clear_job("a")
+        self.assertEqual([j["id"] for j in store.jobs], ["a", "b"])
+        with self.assertRaises(OSError):
+            store.clear_finished_jobs()
+        self.assertEqual([j["id"] for j in store.jobs], ["a", "b"])
+
+    def test_clear_responses_are_unambiguous(self):
+        """Single removal reports the id, bulk reports a count: same intent must not
+        share one key with two types."""
+        store = Store([job("a", "completed"), job("b", "pending")])
+        one = store.clear_job("a")
+        self.assertIn("cleared_id", one)
+        self.assertNotIn("cleared", one)
+        many = Store([job("c", "completed")]).clear_finished_jobs()
+        self.assertEqual(many["cleared"], 1)
 
     def test_every_terminal_state_is_removable(self):
         for state in sorted(main.TERMINAL_JOB_STATES):

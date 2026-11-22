@@ -1363,6 +1363,12 @@ class Station:
         in-progress RF capture whose result is merged back into this same record
         when the receiver releases it: removing either would silently discard the
         record and, for `running`, the capture's result.
+
+        The terminal check and the reassignment happen under the same lock every
+        other state writer uses, so a clear cannot interleave with the
+        running -> completed transition and its result merge. If the save fails
+        the in-memory list is rolled back instead of leaving the live UI claiming
+        a failure while the record is already gone.
         """
         if not isinstance(job_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", job_id):
             raise ValueError("A valid schedule identifier is required")
@@ -1379,19 +1385,34 @@ class Station:
                 raise ValueError(
                     "A %s schedule cannot be cleared: wait for it to finish, "
                     "or stop it first" % (state or "unknown"))
+            previous = self.jobs
             self.jobs = [x for x in self.jobs if x.get("id") != job_id]
-            self.save_jobs()
-            return {"cleared": job_id, "remaining": len(self.jobs)}
+            try:
+                self.save_jobs()
+            except OSError:
+                self.jobs = previous      # the caller is told it failed; so be it
+                raise
+            return {"cleared_id": job_id, "remaining": len(self.jobs)}
 
     def clear_finished_jobs(self):
-        """Remove every TERMINAL record; pending and running schedules stay."""
+        """Remove every TERMINAL record; pending and running schedules stay.
+
+        Same lock discipline as clear_job: the terminal filter and the
+        reassignment are atomic against every scheduler state writer, and a
+        failed save rolls the list back instead of half-removing records.
+        """
         with self.lock:
             before = len(self.jobs)
+            previous = self.jobs
             self.jobs = [x for x in self.jobs
                          if x.get("state") not in TERMINAL_JOB_STATES]
             removed = before - len(self.jobs)
             if removed:
-                self.save_jobs()
+                try:
+                    self.save_jobs()
+                except OSError:
+                    self.jobs = previous
+                    raise
             return {"cleared": removed, "remaining": len(self.jobs)}
 
     def start_scheduler(self):

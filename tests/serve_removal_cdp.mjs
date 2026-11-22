@@ -148,6 +148,10 @@ const run = async () => {
       d.value = ${JSON.stringify(DAY)}; d.dispatchEvent(new Event('change')); return 'day-set'; })()`);
   };
   const cards = () => ev(`JSON.stringify([...document.querySelectorAll('#auto-calendar-grid .sat-calendar-job')].map(c => c.dataset.jobId))`);
+  const confirmText = () => ev("window.__confirmText || ''");
+  const setConfirm = async (answer) => {
+    await ev(`window.__confirmText = ''; window.confirm = (m) => { window.__confirmText = m; return ${answer ? "true" : "false"}; }; 'ok'`);
+  };
   const buttonsOf = (jobId) => ev(`(() => { const card = [...document.querySelectorAll('#auto-calendar-grid .sat-calendar-job')].find(c => c.dataset.jobId === ${JSON.stringify(jobId)});
       return card ? [...card.querySelectorAll('button')].map(b => b.textContent.trim()).join(';') : 'no-card'; })()`);
   const message = () => ev(`document.getElementById('auto-mission-status').textContent.trim()`);
@@ -243,11 +247,11 @@ const run = async () => {
   ]);
   const r1 = await api("/api/clear-job", { job_id: "t1" });
   check("an interrupted record is removable",
-        r1.ok === true && r1.body.cleared === "t1" && r1.body.remaining === 2,
+        r1.ok === true && r1.body.cleared_id === "t1" && r1.body.remaining === 2,
         JSON.stringify(r1.body));
   const r2 = await api("/api/clear-job", { job_id: "t2" });
   check("a cancelled record is removable",
-        r2.ok === true && r2.body.cleared === "t2" && r2.body.remaining === 1,
+        r2.ok === true && r2.body.cleared_id === "t2" && r2.body.remaining === 1,
         JSON.stringify(r2.body));
   const r3 = await api("/api/clear-job", { job_id: "p1" });
   check("the pending schedule is still refused",
@@ -261,6 +265,42 @@ const run = async () => {
   check("only the live schedule remains in the store",
         (left.jobs || []).map((j) => j.id).join(",") === "p1",
         (left.jobs || []).map((j) => j.id).join(","));
+
+  // ---- phase E: the confirmation counts what the server will really remove ----
+  // A terminal record without a run time is invisible to the calendar, yet the bulk
+  // clear removes it. The confirmation must not under-report that.
+  await stopCurrent();
+  await startServer([
+    RECORD("v1", "ISS (ZARYA)", "completed", 9),          // visible on the calendar
+    { id: "h1", satellite: "ISS (ZARYA)", state: "completed" },   // no run_at/aos
+    RECORD("p2", "ISS (ZARYA)", "pending", 16),
+  ]);
+  await navigate();
+  await setConfirm(true);
+  check("the record without a run time stays off the calendar (pending is shown, it is live)",
+        JSON.parse(await cards()).join(",") === "v1,p2"
+        && !JSON.parse(await cards()).includes("h1"), await cards());
+  await ev("document.getElementById('auto-calendar-clear-finished').click(); 'clicked'");
+  for (let i = 0; i < 30; i++) {
+    if ((await message()).startsWith("Cleared ")) break;
+    await sleep(1000);
+  }
+  for (let i = 0; i < 30; i++) {
+    if (!JSON.parse(await cards()).includes("v1")) break;
+    await sleep(1000);
+  }
+  check("the confirmation asked for BOTH finished records, including the hidden one",
+        /^Remove 2 finished record\(s\)\? Pending and running schedules stay\.$/.test(await confirmText()),
+        "got: " + await confirmText());
+  check("the bulk clear removed the hidden terminal record too",
+        !(await (await fetch(`${BASE}/api/status`)).json()).jobs.some((j) => j.id === "h1"),
+        "store after clear");
+  check("the bulk clear removed every finished record and kept the live one",
+        (await (await fetch(`${BASE}/api/status`)).json()).jobs.map((j) => j.id).join(",") === "p2",
+        "store after clear");
+  check("the message reports both removed records",
+        (await message()) === "Cleared 2 finished record(s); 1 schedule(s) remain.",
+        await message());
 
   log(`\n${failures === 0 ? "ALL CHECKS PASSED" : failures + " CHECK(S) FAILED"}`);
   return failures;
