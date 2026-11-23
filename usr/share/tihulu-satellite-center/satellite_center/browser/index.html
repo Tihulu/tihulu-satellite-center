@@ -342,6 +342,7 @@ All location methods are optional. City suggestions are offline by default; GPS 
 <section id="iq-analysis" class="iq-panel">
 <h2>6 · Signal Intelligence — CU8 I/Q analysis &amp; audio preview</h2>
 <p class="hint">Analyze the <strong>last locally captured recording</strong> or open an existing <code>.cu8</code> file. Quick mode samples scattered windows; <strong>Full file</strong> processes every complete FFT block in bounded memory. Detect candidate energy regions and optionally generate an experimental AM/NFM audio preview. Neither identifies a satellite or decodes Meteor LRPT, APRS or Iridium traffic. I/Q samples remain in your browser.</p>
+<p class="hint">You can also <strong>drag a local .cu8 file</strong> onto this section; it is selected in the analyzer exactly like the file picker. Nothing is uploaded.</p>
 <div class="iq-controls">
 <label>Local .cu8 file
 <input id="iq-file" type="file" accept=".cu8,.iq,.u8,application/octet-stream">
@@ -424,6 +425,7 @@ All location methods are optional. City suggestions are offline by default; GPS 
 <button type="button" class="secondary" id="image-reception-open">Open event / decoder guide</button>
 </div>
 <p class="hint"><strong>ISS Robot36:</strong> record demodulated narrowband FM audio WAV, then decode it here. Raw CU8 is not WAV. <strong>Meteor LRPT:</strong> record raw CU8 during a pass and decode with SatDump (available through the optional desktop companion). A standard browser spectrum is not an LRPT decoder.</p>
+<p class="hint">Drag a real FM <strong>.wav</strong> here for Robot36 decoding, or a raw <strong>.cu8</strong> for direct RF decoding; decoded <strong>.png/.jpg</strong> images can be dropped onto this panel too.</p>
 <label>Local SSTV audio file (WAV/Audio; experimental Robot36 decoding)
 <input id="image-sstv-file" type="file" accept=".wav,audio/wav,audio/x-wav,audio/*"></label>
 <div class="line"><button type="button" id="image-decode-sstv">Decode Robot36 SSTV audio</button>

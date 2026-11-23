@@ -885,7 +885,105 @@ class Station:
     def save_jobs(self):
         safe_write(self.directory/"schedule.json", self.jobs[-150:])
 
-    def schedule(self, pass_id, profile, mode, run_at=None, seconds=None, *, automatic=False, sample_rate=1024000):
+    # --- Owner-selected per-job recording directories -----------------------
+    # A local write surface must never become an arbitrary-write primitive for
+    # the paired HTTP API: the resolved directory has to stay inside the app
+    # data directory or the user's home directory, may not traverse with '..',
+    # may not escape the allowed roots through a symlink, and is created with
+    # 0700 exactly like the default captures folder.
+    def resolve_recording_dir(self, value):
+        if value is None:
+            return None
+        if isinstance(value, Path):
+            text = str(value)
+        elif isinstance(value, str):
+            text = value.strip()
+        else:
+            raise ValueError("Recording directory must be a path")
+        if not text:
+            return None
+        if len(text) > 200 or "\x00" in text:
+            raise ValueError("Recording directory path is not acceptable")
+        if ".." in Path(text).parts:
+            raise ValueError("Recording directory may not contain '..'")
+        candidate = Path(text).expanduser()
+        if not candidate.is_absolute():
+            # Web clients may only name a subdirectory under captures.
+            candidate = self.archive/candidate
+        try:
+            resolved = candidate.resolve(strict=False)
+        except OSError as exc:
+            raise ValueError("Recording directory cannot be resolved") from exc
+        allowed = [self.directory.resolve(), Path.home().resolve()]
+        if not any(resolved == root or root in resolved.parents for root in allowed):
+            raise ValueError(
+                "Recording directory must stay inside the app data folder or your home directory")
+        if resolved != self.archive.resolve() and resolved.exists() and not resolved.is_dir():
+            raise ValueError("Recording path exists and is not a directory")
+        return resolved
+
+    def prepare_recording_dir(self, value):
+        """Validate and create a per-job recording directory (mode 0700)."""
+        root = self.resolve_recording_dir(value)
+        if root is None:
+            return self.archive
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        return root
+
+    def register_recording_dir(self, root):
+        """Persist a non-default recording root so archives keep listing it."""
+        try:
+            resolved = Path(root).resolve(strict=False)
+        except OSError:
+            return
+        if resolved == self.archive.resolve():
+            return
+        registry = self._recording_registry()
+        entry = str(resolved)
+        if entry in registry:
+            return
+        registry.append(entry)
+        safe_write(self.directory/"recording_dirs.json", registry[-60:])
+
+    def _recording_registry(self):
+        return [row for row in safe_read(self.directory/"recording_dirs.json", [])
+                if isinstance(row, str)]
+
+    def recording_roots(self):
+        """Default captures folder plus every owner-selected recording folder."""
+        roots = [self.archive]
+        for job in self.jobs:
+            value = job.get("output_dir")
+            if isinstance(value, str) and value:
+                roots.append(value)
+        roots.extend(self._recording_registry())
+        archive_resolved = self.archive.resolve()
+        ordered, seen = [], set()
+        for value in roots:
+            try:
+                path = Path(value)
+                resolved = (path if path.is_absolute() else self.directory/path).resolve(strict=False)
+            except OSError:
+                continue
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            if resolved != archive_resolved and not resolved.is_dir():
+                continue
+            ordered.append(resolved)
+        return ordered
+
+    def find_recording(self, name):
+        """Locate one archived recording in any known recording folder."""
+        if not isinstance(name, str):
+            return None, None
+        for root in self.recording_roots():
+            path = root/name
+            if path.is_file():
+                return root, path
+        return None, None
+
+    def schedule(self, pass_id, profile, mode, run_at=None, seconds=None, *, automatic=False, sample_rate=1024000, output_dir=None):
         """Explicit native RF pass schedule (Firefox-compatible, no WebUSB/FSA).
 
         Enforces server-predicted public TLE event/profile and local disk
@@ -949,7 +1047,11 @@ class Station:
                 raise ValueError("Native start must be in the future and inside predicted pass")
             if chosen+timedelta(seconds=duration+END_MARGIN_SECONDS)>los:
                 raise ValueError("Insufficient predicted LOS time for the full requested native recording")
-            free = shutil.disk_usage(self.archive).free
+            output_root = self.resolve_recording_dir(output_dir)
+            # Create the operator's folder now so the disk budget below is
+            # measured on the filesystem that will actually hold the file.
+            data_root = self.prepare_recording_dir(output_root)
+            free = shutil.disk_usage(data_root).free
             reserve = sum(int(other.get("estimated_bytes") or 0) for other in self.jobs
                           if other.get("state") in ("pending","running"))
             estimate = ((2*sample_rate+64000)*duration if mode == "iq_and_fm_wav"
@@ -976,8 +1078,11 @@ class Station:
                    "estimated_bytes": estimate,
                    "data_kind": "raw RF energy" if event["family"]=="iridium" else "unclassified IQ",
                    "coverage": "full-pass-attempt" if chosen+timedelta(seconds=duration)>=los-timedelta(seconds=END_MARGIN_SECONDS+5) else "partial-pass",
-                   "state": "pending", "created_at": stamp(), "result": None}
+                   "state": "pending", "created_at": stamp(), "result": None,
+                   "output_dir": str(output_root) if output_root else None}
             self.jobs.append(job)
+            if output_root is not None:
+                self.register_recording_dir(output_root)
             self.save_jobs()
             self.start_scheduler()
             self.wake.set()
@@ -985,7 +1090,7 @@ class Station:
 
     def schedule_chain(self, pass_id, profile, mode, run_at=None, seconds=None,
                        *, max_part_seconds=180, gap_seconds=21,
-                       sample_rate=1024000, automatic=False):
+                       sample_rate=1024000, automatic=False, output_dir=None):
         """Explicit receive-only native file chain with separately persisted jobs.
 
         Every part is independently recorded and may have receiver re-tune gaps.
@@ -1033,10 +1138,13 @@ class Station:
                 for at, take in planned:
                     if sample_rate==1024000:
                         created.append(self.schedule(pass_id, profile, mode, stamp(at),
-                                                     take, automatic=automatic))
+                                                     take, automatic=automatic,
+                                                     output_dir=output_dir))
                     else:
                         created.append(self.schedule(pass_id, profile, mode, stamp(at),
-                                                     take, automatic=automatic, sample_rate=sample_rate))
+                                                     take, automatic=automatic,
+                                                     sample_rate=sample_rate,
+                                                     output_dir=output_dir))
                 group_id = uuid.uuid4().hex[:12]
                 for idx, job in enumerate(created, 1):
                     live = next(row for row in self.jobs if row["id"] == job["id"])
@@ -1470,7 +1578,8 @@ class Station:
                 if int(nearest.get("sample_rate") or 1024000) != 1024000:
                     kwargs["sample_rate"] = int(nearest["sample_rate"])
                 result = self.capture(nearest["profile"], nearest["mode"], duration,
-                        scheduled=True, satellite=nearest.get("satellite"), **kwargs)
+                        scheduled=True, satellite=nearest.get("satellite"),
+                        output_dir=nearest.get("output_dir"), **kwargs)
                 # The receiver is already released by capture(). A full-pass
                 # ISS SSTV WAV can contain several separate Robot36 images.
                 # Decode only actual PCM samples; never infer imagery from
@@ -1480,7 +1589,7 @@ class Station:
                 if nearest.get("mission_id") == "iss-sstv" and wav_name:
                     try:
                         result["sstv"] = extract_robot36_wav(
-                            self.archive / wav_name,
+                            Path(result.get("root") or self.archive) / wav_name,
                             compute_mode=nearest.get("compute_mode", "auto"),
                             compute_targets=nearest.get("compute_targets"))
                     except Exception as exc:
@@ -1596,7 +1705,7 @@ class Station:
         self.request_stop()
 
     def capture_dual(self,profile,seconds=60,scheduled=False,owner=None,satellite=None,
-                     sample_rate=1024000):
+                     sample_rate=1024000,output_dir=None):
         """Receive physical CU8 once, then demodulate its *same samples* to WAV.
 
         Native hardware backend, not WebUSB. The 32-kHz WAV is a derived
@@ -1605,12 +1714,14 @@ class Station:
         """
         if profile not in ("iss_voice","iss_sstv","iss_uhf"):
             raise ValueError("Dual CU8 + FM WAV requires a catalogued ISS audio profile")
+        output_root=self.prepare_recording_dir(output_dir)
         iq=self.capture(profile,"iq",seconds,scheduled=scheduled,owner=owner,
-                        satellite=satellite,sample_rate=sample_rate)
+                        satellite=satellite,sample_rate=sample_rate,
+                        output_dir=output_root)
         from .native_signal_tools import fm_to_wav
         try:
             report=fm_to_wav(
-                self.archive/iq["file"],self.archive,sample_rate,
+                output_root/iq["file"],output_root,sample_rate,
                 int(PROFILES[profile]["freq"]),0)
             iq["wav"]=Path(report["output_wav"]).name
             iq["wav_format"]="32kHz 16-bit PCM mono (native CPU demodulation after RF capture)"
@@ -1623,7 +1734,7 @@ class Station:
         return iq
 
     def capture(self, profile, mode="survey", seconds=18, scheduled=False, owner=None,
-                satellite=None, sample_rate=1024000):
+                satellite=None, sample_rate=1024000, output_dir=None):
         if profile not in PROFILES or mode not in MODES or not allowed_mode(profile, mode):
             raise ValueError("Unsupported capture preset")
         if type(seconds) is not int or not 8 <= seconds <= MAX_CAPTURE_SECONDS:
@@ -1638,7 +1749,7 @@ class Station:
                 raise ValueError(
                     "Selected IQ/WAV duration and rate exceed safe 2 GB total disk limit")
         if mode == "iq_and_fm_wav":
-            return self.capture_dual(profile,seconds,scheduled,owner,satellite,sample_rate)
+            return self.capture_dual(profile,seconds,scheduled,owner,satellite,sample_rate,output_dir)
         # Explicit manual requests use the same 8–900 s/2 GB native disk
         # safety budget as scheduled captures. No browser IQ memory buffer.
         if mode == "survey" and seconds > 180:
@@ -1649,6 +1760,7 @@ class Station:
         if owner is not None and (not isinstance(owner, str) or
                 not re.fullmatch(r"[A-Za-z0-9_-]{12,80}", owner)):
             raise ValueError("Invalid browser client identifier")
+        output_root = self.prepare_recording_dir(output_dir)
         with self.lock:
             if self.closed.is_set():
                 raise RuntimeError("Satellite Center is shutting down")
@@ -1666,7 +1778,7 @@ class Station:
             if not candidate.upper().endswith(("CANDIDATE", "UNATTRIBUTED")):
                 candidate += "-CANDIDATE"
             frequency = int(PROFILES[profile]["freq"] or 0)
-            target = self.archive/recording_name(
+            target = output_root/recording_name(
                 satellite=candidate, timestamp=now(), frequency_hz=frequency,
                 sample_rate=sample_rate if mode == "iq" else 48000 if mode in ("sstv_audio", "fm_audio") else None,
                 kind={"survey":"SURVEY","iq":"IQ","aprs":"APRS","sstv_audio":"SSTV-AUDIO","fm_audio":"VOICE-AUDIO"}[mode],
@@ -1675,7 +1787,7 @@ class Station:
                 raise RuntimeError("Capture for this satellite already exists at this UTC second")
             self.session = {"state": "running", "active": True, "profile": profile, "mode": mode,
                             "started_at": stamp(), "path": target.name, "message": "Physical receiver requested; acquisition pending",
-                            "scheduled": scheduled}
+                            "scheduled": scheduled, "root": str(output_root)}
         if self.manual_owner:
             threading.Thread(target=self._manual_watchdog, args=(self.manual_owner,),
                              name="satellite-browser-watchdog", daemon=True).start()
@@ -1713,7 +1825,7 @@ class Station:
             elif mode == "iq":
                 rate = sample_rate
                 count = seconds*rate
-                if shutil.disk_usage(self.archive).free < 2*count+200_000_000:
+                if shutil.disk_usage(output_root).free < 2*count+200_000_000:
                     raise RuntimeError("Insufficient free disk space for bounded IQ capture")
                 command = [shutil.which("rtl_sdr"), "-d", "0", "-f", str(PROFILES[profile]["freq"]),
                            "-s", str(rate), "-g", "35", "-n", str(count), str(target)]
@@ -1749,9 +1861,12 @@ class Station:
             if not target.exists() or target.stat().st_size == 0:
                 raise RuntimeError("No actual RF data captured")
             size = target.stat().st_size
+            if output_root != self.archive:
+                self.register_recording_dir(output_root)
             result = {"file": target.name, "bytes": size, "mode": mode,
                       "sample_rate":sample_rate if mode=="iq" else None,
                       "profile": profile, "observed_at": stamp(),
+                      "root": str(output_root),
                       "status": "recorded_unverified_rf"}
             if mode == "survey": result["status"] = "relative_spectrum_measurement"
             with self.lock:
@@ -1830,14 +1945,21 @@ class Station:
 
     def records(self):
         result = []
-        for path in sorted(self.archive.iterdir(), reverse=True)[:100]:
-            if path.is_file() and path.suffix.lower() in (
-                ".json", ".cu8", ".txt", ".wav", ".png", ".jpg", ".jpeg",
-                ".mp4", ".m4v", ".mov", ".webm", ".gif", ".webp",
-                ".mp3", ".ogg", ".flac", ".csv", ".geojson"):
-                result.append({"file": path.name, "bytes": path.stat().st_size,
-                               "modified": datetime.fromtimestamp(path.stat().st_mtime, UTC).isoformat(timespec="seconds")})
-        return result
+        for root in self.recording_roots():
+            try:
+                entries = sorted(root.iterdir(), reverse=True)
+            except OSError:
+                continue
+            for path in entries:
+                if path.is_file() and path.suffix.lower() in (
+                    ".json", ".cu8", ".txt", ".wav", ".png", ".jpg", ".jpeg",
+                    ".mp4", ".m4v", ".mov", ".webm", ".gif", ".webp",
+                    ".mp3", ".ogg", ".flac", ".csv", ".geojson"):
+                    result.append({"file": path.name, "bytes": path.stat().st_size,
+                                   "root": str(root),
+                                   "modified": datetime.fromtimestamp(path.stat().st_mtime, UTC).isoformat(timespec="seconds")})
+        result.sort(key=lambda row: row["modified"], reverse=True)
+        return result[:100]
 
     def decode_meteor(self, name, variant="72k"):
         if not meteor_capture(name):
@@ -1849,10 +1971,10 @@ class Station:
             raise RuntimeError("SatDump not installed; original .cu8 remains available")
         if variant not in ("72k", "80k"):
             raise ValueError("Supported Meteor LRPT decoder variants: 72k or 80k")
-        src = self.archive/name
-        if not src.is_file():
+        root, src = self.find_recording(name)
+        if src is None:
             raise ValueError("Recording not found")
-        dest = self.archive/(src.stem+"_decoded")
+        dest = root/(src.stem+"_decoded")
         dest.mkdir(exist_ok=True, mode=0o700)
         cmd = [exe, "pipeline",
                "meteor_m2-x_lrpt_80k" if variant=="80k" else "meteor_m2-x_lrpt",
@@ -1885,7 +2007,7 @@ class Station:
             output = dest/output_name
             if image.resolve() != output.resolve():
                 shutil.copyfile(image,output)
-            images.append(str(output.relative_to(self.archive)))
+            images.append(str(output.relative_to(root)))
         return {"decoder_exit": result.returncode, "images": images, "variant": variant,
                 "result": "actual_decoder_files" if images else "no_images_decoded",
                 "note": "Only actual SatDump-created image files are shown; satellite source is a target candidate, not independently verified.",
@@ -2024,23 +2146,29 @@ class Handler(BaseHTTPRequestHandler):
                 # Only locally generated, fixed-name Robot36 candidate PNGs.
                 # Keep existing path-restricted SatDump handling unchanged.
                 if re.fullmatch(r"TIHULU_[A-Za-z0-9_-]+_ROBOT36_[0-9]{2}\.png", sub):
-                    path = self.server.station.archive/sub
-                    if not path.is_file() or not 0 < path.stat().st_size <= 15_000_000:
+                    root, path = self.server.station.find_recording(sub)
+                    if path is None or not 0 < path.stat().st_size <= 15_000_000:
                         return self.reply(404, {"error": "Robot36 image unavailable"})
                     return self.send_bytes(200, path.read_bytes(), "image/png")
                 match = re.fullmatch(r"([A-Za-z0-9_.-]+)_decoded/([A-Za-z0-9_./-]+\.(png|jpg|jpeg))", sub)
                 if not match or ".." in sub or not meteor_capture(match.group(1)+".cu8"):
                     return self.reply(400, {"error": "Invalid image path"})
-                path = (self.server.station.archive/sub).resolve()
-                if not path.is_relative_to(self.server.station.archive.resolve()) or not path.is_file() or path.stat().st_size > 15_000_000:
+                path = None
+                for root in self.server.station.recording_roots():
+                    candidate = (root/sub).resolve()
+                    if candidate.is_relative_to(root.resolve()) and candidate.is_file() \
+                            and candidate.stat().st_size <= 15_000_000:
+                        path = candidate
+                        break
+                if path is None:
                     return self.reply(404, {"error": "Image unavailable"})
                 return self.send_bytes(200, path.read_bytes(), "image/png" if path.suffix == ".png" else "image/jpeg")
             if route.startswith("/api/archive/"):
                 file = route.removeprefix("/api/archive/")
                 if not re.fullmatch(r"[a-zA-Z0-9_\-]+\.(json|txt|wav|cu8)", file):
                     return self.reply(400, {"error": "Invalid archive filename"})
-                path = self.server.station.archive/file
-                if not path.is_file(): return self.reply(404, {"error": "Not found"})
+                root, path = self.server.station.find_recording(file)
+                if path is None: return self.reply(404, {"error": "Not found"})
                 # Allow explicit download, not unchecked in-browser rendering.
                 self.send_response(200)
                 self.send_header("Content-Type", "application/octet-stream")
@@ -2086,11 +2214,13 @@ class Handler(BaseHTTPRequestHandler):
             elif route == "/api/schedule":
                 result = app.schedule(data.get("pass_id"), data.get("profile"), data.get("mode"),
                                       data.get("run_at"), data.get("duration_seconds"),
-                                      sample_rate=data.get("sample_rate", 1024000))
+                                      sample_rate=data.get("sample_rate", 1024000),
+                                      output_dir=data.get("output_dir"))
             elif route == "/api/schedule-chain":
                 result = app.schedule_chain(data.get("pass_id"),data.get("profile"),
                     data.get("mode"),data.get("run_at"),data.get("duration_seconds"),
-                    sample_rate=data.get("sample_rate",1024000))
+                    sample_rate=data.get("sample_rate",1024000),
+                    output_dir=data.get("output_dir"))
             elif route == "/api/auto-schedule":
                 result = app.auto_schedule(data.get("missions"), city=data.get("city", "Cologne"),
                     lat=data.get("lat"), lon=data.get("lon"),

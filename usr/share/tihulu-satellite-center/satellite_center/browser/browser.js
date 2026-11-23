@@ -12,6 +12,7 @@ import {readUserProfiles} from './saved_satellite_protocols.mjs';
 import { selectAutomaticPasses, AUTO_TARGETS } from './auto_mission.mjs?v=20261106-iss-npu-release-v1';
 import {localDayKey,shiftCalendarDay,renderSatelliteCalendar} from './satellite_calendar.mjs?v=20261106-calendar-zip-v2';
 import {dismissAction,finishedJobs,pendingJobs,TERMINAL_JOB_STATES} from './job_removal.mjs?v=20261122-job-removal-v1';
+import {normalizeOutputDir,dropPlanFor,acceptsAnalysisDrop,droppedFileSuffix} from './recording_dir.mjs?v=20261123-per-job-dir-v1';
 import { localDateInput, parseLocalScheduleTime, createScheduledPass, evaluateScheduledJob, secondsToJob, captureLevelSummary } from './schedule_controller.mjs?v=20261106-direct-fm-wav-v1';
 import {planChainedCapture,secondsFromEntry,humanCountdown,scheduledOverlap} from './chained_capture.mjs?v=20261107-chained-v1';
 import {candidateFromPass,readPlanningCandidates,savePlanningCandidate,removePlanningCandidate} from './pass_candidates.mjs';
@@ -67,7 +68,7 @@ async function nativeRequest(route,payload=null,csrf=null){
  if(!response.ok)throw Error(String(result.error||response.status));
  return result;
 }
-async function nativeScheduledPass(pass,{when,durationSeconds,frequency,sampleRate,saveRaw,saveWav=false}){
+async function nativeScheduledPass(pass,{when,durationSeconds,frequency,sampleRate,saveRaw,saveWav=false,outputDir=null}){
  if(!nativeLocal())throw Error("Start the Debian app and open http://127.0.0.1:8791/browser/index.html");
  if(![1024000,2048000].includes(sampleRate))throw Error("Native SDR sample rate must be 1.024 or 2.048 MS/s.");
  if(!Number.isInteger(durationSeconds)||durationSeconds<8||durationSeconds>7200)
@@ -102,9 +103,11 @@ async function nativeScheduledPass(pass,{when,durationSeconds,frequency,sampleRa
  const endpoint=durationSeconds>900?"/api/schedule-chain":"/api/schedule";
  const mode=saveRaw&&saveWav?"iq_and_fm_wav":
    saveRaw?"iq":profile==="iss_sstv"?"sstv_audio":"fm_audio";
- return nativeRequest(endpoint,{pass_id:target.id,profile,mode,
+ const payload={pass_id:target.id,profile,mode,
    run_at:new Date(when).toISOString(),duration_seconds:durationSeconds,
-   sample_rate:sampleRate},state.csrf);
+   sample_rate:sampleRate};
+ if(outputDir)payload.output_dir=outputDir;
+ return nativeRequest(endpoint,payload,state.csrf);
 }
 
 function captureWavName(job,frequency,at=new Date()){
@@ -1149,7 +1152,19 @@ function appendPass(pass){
   wav.checked=Number(frequency.value)===437550000;
   if(wav.checked)raw.checked=false;
   wavLabel.append(wav,' Record real FM-demodulated audio (.wav, mono PCM 48 kHz), suitable for Robot36 analysis.');
+  const folderLabel=document.createElement('label');
+  folderLabel.textContent='Recording folder · optional subdirectory name';
+  const folder=document.createElement('input');
+  folder.type='text';folder.maxLength='41';folder.autocapitalize='off';
+  folder.autocomplete='off';folder.spellcheck=false;
+  folder.placeholder='e.g. ISS-SSTV-2026-11';
+  folderLabel.append(folder);
+  const folderHint=document.createElement('p');
+  folderHint.className='hint schedule-wide';
+  folderHint.textContent='Native companion only: optional subdirectory under its captures folder where these recordings are written (for example ISS-SSTV-2026-11). Leave empty for the default captures folder. The installed desktop app can choose any folder.';
   const updateNativeFormat=()=>{
+    folderLabel.hidden=!nativeReceiver();
+    folderHint.hidden=!nativeReceiver();
     if(!nativeReceiver())return;
     const hz=Number(frequency.value);
     const supportsAudio=pass.family==="iss"&&[145800000,437550000,437800000].includes(hz);
@@ -1210,7 +1225,7 @@ function appendPass(pass){
   duration.addEventListener('input',refreshBudget);rate.addEventListener('input',refreshBudget);
   updateNativeFormat();
   refreshBudget();
-  form.append(timeLabel,frequencyLabel,durationLabel,unitLabel,rateLabel,saveLabel,wavLabel,budgetLabel,localLink,explanation,alert,planOnly,confirm);
+  form.append(timeLabel,frequencyLabel,durationLabel,unitLabel,rateLabel,saveLabel,wavLabel,folderLabel,folderHint,budgetLabel,localLink,explanation,alert,planOnly,confirm);
   form.addEventListener('submit',async event=>{
     event.preventDefault();
     let prepared=null;
@@ -1221,7 +1236,8 @@ function appendPass(pass){
       if(nativeLocal()){
         const job=await nativeScheduledPass(pass,{
           when:selectedTime,durationSeconds:seconds,frequency:Number(frequency.value),
-          sampleRate:chosenRate,saveRaw:raw.checked,saveWav:wav.checked
+          sampleRate:chosenRate,saveRaw:raw.checked,saveWav:wav.checked,
+          outputDir:normalizeOutputDir(folder.value)
         });
         alert.textContent=job.scheduled_count?
           "Native companion: "+job.scheduled_count+" separate calendar files queued · "+
@@ -2178,6 +2194,61 @@ if(['iss-images','images','messages','voice','all'].includes(requestedAutoMissio
   $('auto-mode').value=requestedAutoMission;
   $('auto-plan-status').textContent='Reception type preselected. Click Auto Schedule & Capture to grant hardware permission and arm passes.';
 }
+
+// Drag & drop: a recording dropped onto an analysis section behaves exactly
+// like the same file chosen with that section's own picker. Local files only;
+// nothing is uploaded or transmitted.
+const ANALYSIS_DROP_ZONES=[["iq-analysis","iq-analysis"],["satellite-images","satellite-images"]];
+function firstDropSuffix(dataTransfer){
+  if(!dataTransfer||!dataTransfer.files)return "";
+  for(const file of dataTransfer.files){
+    const suffix=droppedFileSuffix(file.name);
+    if(suffix)return suffix;
+  }
+  return "";
+}
+function initAnalysisDropZones(){
+  for(const [zoneId,elementId] of ANALYSIS_DROP_ZONES){
+    const element=$(elementId);
+    if(!element)continue;
+    element.addEventListener("dragover",event=>{
+      if(!acceptsAnalysisDrop(zoneId,firstDropSuffix(event.dataTransfer)))return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect="copy";
+      element.classList.add("drop-active");
+    });
+    element.addEventListener("dragleave",()=>element.classList.remove("drop-active"));
+    element.addEventListener("drop",event=>{
+      element.classList.remove("drop-active");
+      const files=event.dataTransfer?.files;
+      if(!files||!files.length)return;
+      event.preventDefault();
+      let accepted=0;
+      for(const file of files){
+        const plan=dropPlanFor(zoneId,droppedFileSuffix(file.name));
+        if(!plan)continue;
+        const input=$(plan.inputId);
+        if(!input)continue;
+        try{
+          const transfer=new DataTransfer();
+          transfer.items.add(file);
+          input.files=transfer.files;
+        }catch(error){
+          log("Drag & drop: this browser cannot hand the file to the picker ("+
+              String(error.message||error)+"). Use the file button.");
+          continue;
+        }
+        accepted++;
+        input.dispatchEvent(new Event("change",{bubbles:true}));
+        if(plan.startId)$(plan.startId)?.click();
+      }
+      if(accepted)log("Dropped "+accepted+" local file(s) into "+zoneId+
+        "; analysis uses the same picker input.");
+      else log("Drag & drop: no supported recording among the dropped items.");
+    });
+  }
+}
+initAnalysisDropZones();
 
 iqAnalysisUI=initIqAnalysisUI({log});
 satelliteImageUI=initSatelliteImageUI({

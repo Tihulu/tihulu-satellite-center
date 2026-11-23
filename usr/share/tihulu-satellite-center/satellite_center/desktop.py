@@ -192,6 +192,44 @@ class NativeIqLevelView(QWidget):
         painter.drawText(max(left,right-95),top+14,f"{self.levels[-1]:.1f} dBFS")
 
 
+ANALYSIS_DROP_SUFFIXES = (".cu8", ".iq", ".u8", ".wav", ".mp3", ".ogg", ".flac",
+                          ".png", ".jpg", ".jpeg", ".gif", ".webp", ".txt",
+                          ".json", ".csv", ".mp4", ".m4v", ".mov", ".webm")
+
+
+class RecordingDropArea(QScrollArea):
+    """Analysis section drop target: real local files only, never a URL.
+
+    The Qt analysis tab accepts the same recordings an operator could open
+    through the file dialog; dropping one selects it in the analyzer exactly
+    like the explicit picker. Nothing is uploaded or transmitted.
+    """
+
+    def __init__(self, window):
+        super().__init__()
+        self._window = window
+        self.setAcceptDrops(True)
+
+    def _dropped_file(self, event):
+        for url in event.mimeData().urls():
+            path = Path(url.toLocalFile())
+            if path.suffix.lower() in ANALYSIS_DROP_SUFFIXES and path.is_file():
+                return path
+        return None
+
+    def dragEnterEvent(self, event):
+        if self._dropped_file(event) is not None:
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        path = self._dropped_file(event)
+        if path is None:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        self._window._open_dropped_recording(path)
+
+
 class SatelliteWindow(QMainWindow):
     """Only native Qt5 controls; controls are not replaced during timed updates."""
     def __init__(self, station=None, auto_poll=True):
@@ -1725,6 +1763,18 @@ class SatelliteWindow(QMainWindow):
         form.addRow("Length unit",self.pass_length_unit)
         form.addRow(self._hint("Over 180 seconds, this creates <=180 s native calendar files with 21 s reserved gaps. RF is NOT continuous."))
         form.addRow("Estimated disk space",self.pass_cost)
+        self.pass_output_dir=QLineEdit()
+        self.pass_output_dir.setPlaceholderText("Default: "+str(self.station.archive))
+        self.pass_output_dir.setToolTip(
+            "Optional: folder where this scheduled recording is written. "
+            "Empty uses the default captures folder.")
+        folder_buttons=QHBoxLayout()
+        folder_buttons.setSpacing(6)
+        folder_buttons.addWidget(self._button("Choose folder…",self._choose_recording_folder),3)
+        folder_buttons.addWidget(self._button("Use default",self._reset_recording_folder),1)
+        folder_row=QWidget();folder_row.setLayout(folder_buttons)
+        form.addRow("Recording folder",self.pass_output_dir)
+        form.addRow("",folder_row)
         self.arm_pass=self._button("Arm selected RF capture",self.schedule_selected_pass)
         form.addRow(self.arm_pass)
         self.pass_feedback=self._hint("Not scheduled yet.")
@@ -2295,7 +2345,7 @@ class SatelliteWindow(QMainWindow):
             self.timeline.setRowHeight(hour,40)
         body.addWidget(self.timeline,2)
         self.job_list=QTreeWidget()
-        self.job_list.setHeaderLabels(["Satellite","Local start","Local end","Duration","State","Protocol"])
+        self.job_list.setHeaderLabels(["Satellite","Local start","Local end","Duration","State","Protocol","Recording folder"])
         self.job_list.itemSelectionChanged.connect(self._job_selected)
         body.addWidget(self.job_list,1)
         self.job_note=self._hint("Cancelled jobs are hidden from the calendar; "
@@ -2385,7 +2435,7 @@ class SatelliteWindow(QMainWindow):
 
     def _results_tab(self):
         outer=self._new_tab("Recordings & results")
-        scroll=QScrollArea()
+        scroll=RecordingDropArea(self)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         panel=QWidget()
@@ -2758,7 +2808,7 @@ class SatelliteWindow(QMainWindow):
         self.native_image_files.clear()
         for item in archive:
             name=item.get("file","")
-            path=self.station.archive/name
+            path=Path(item.get("root") or self.station.archive)/name
             if not path.is_file():continue
             label,_=describe_local_file(path)
             row=QTreeWidgetItem([name,label,str(item.get("bytes",0))])
@@ -3086,7 +3136,7 @@ class SatelliteWindow(QMainWindow):
         rawname=session.get("path")
         if not isinstance(rawname,str) or not rawname.endswith(".cu8"):
             return
-        source=self.station.archive/rawname
+        source=Path(session.get("root") or self.station.archive)/rawname
         try:
             size=source.stat().st_size
             if size<8192:return
@@ -3393,6 +3443,17 @@ class SatelliteWindow(QMainWindow):
             f"{seconds+gaps} s total elapsed ({gaps} s reserved gaps). "
             "No lossless continuity; receiver must be free and visible pass must fit.")
 
+    def _choose_recording_folder(self):
+        start=str(self.station.archive)
+        chosen=self.pass_output_dir.text().strip()
+        if chosen and Path(chosen).is_dir():start=chosen
+        folder=QFileDialog.getExistingDirectory(
+            self,"Folder for scheduled recordings",start)
+        if folder:self.pass_output_dir.setText(folder)
+
+    def _reset_recording_folder(self):
+        self.pass_output_dir.clear()
+
     def schedule_selected_pass(self):
         item=self.pass_list.currentItem()
         if not item:return QMessageBox.information(self,"Schedule","Choose a predicted pass first.")
@@ -3401,20 +3462,23 @@ class SatelliteWindow(QMainWindow):
         mode=self.pass_mode.currentData()
         seconds=self.pass_seconds.value()*(60 if self.pass_length_unit.currentData()=="minutes" else 1)
         sample_rate=int(self.pass_sample_rate.currentData() or 1024000)
+        output_dir=self.pass_output_dir.text().strip() or None
         start=datetime.fromtimestamp(self.pass_time.dateTime().toSecsSinceEpoch(),timezone.utc).isoformat()
         def completed(job):
             n=job.get("scheduled_count",1)
+            folder=output_dir or str(self.station.archive)
             text=(str(n)+" native capture file(s) scheduled · "+str(seconds)+" s RF. "+
                   (str(job.get("total_gap_seconds",0))+" s reserved gaps. " if n>1 else "")+
+                  "Recording folder: "+folder+". "+
                   "The native Qt app must remain running.")
             self.pass_feedback.setText(text)
             self.statusBar().showMessage(text,12000)
             self.refresh_status()
         self._task("Arm scheduled RF",
                    lambda:self.station.schedule_chain(key,profile,mode,start,seconds,
-                       sample_rate=sample_rate) if seconds>180 else
+                       sample_rate=sample_rate,output_dir=output_dir) if seconds>180 else
                    self.station.schedule(key,profile,mode,start,seconds,
-                       sample_rate=sample_rate),completed)
+                       sample_rate=sample_rate,output_dir=output_dir),completed)
 
     def _auto_unit_changed(self):
         minute=self.auto_length_unit.currentData()=="minutes"
@@ -3457,6 +3521,19 @@ class SatelliteWindow(QMainWindow):
         self._task("Cancel auto jobs",self.station.cancel_auto_missions,
                    lambda result:self.refresh_status())
 
+    def _open_dropped_recording(self,path):
+        """A file dropped onto the analysis section behaves like the picker."""
+        self._open_native_tab("Recordings & results")
+        self.result_steps.setCurrentIndex(0)
+        self._choose_path(str(path))
+        if path.suffix.lower() in (".cu8",".iq",".u8"):
+            self.result_steps.setCurrentIndex(1)
+        elif path.suffix.lower() in (".wav",".mp3",".ogg",".flac"):
+            self.result_steps.setCurrentIndex(2)
+        self.statusBar().showMessage(
+            "Dropped file selected: "+path.name+" · not independently "
+            "attributed to a satellite.",12000)
+
     def _render_job_list(self):
         selected=self.job_list.currentItem()
         old=selected.data(0,Qt.UserRole) if selected else None
@@ -3471,7 +3548,8 @@ class SatelliteWindow(QMainWindow):
                                            timezone.utc).isoformat()
             item=QTreeWidgetItem([job.get("satellite","Unknown"),local_time(start),
                 local_time(end),str(secs)+" s",job.get("state",""),
-                job.get("mission_id") or job.get("profile","")])
+                job.get("mission_id") or job.get("profile",""),
+                job.get("output_dir") or str(self.station.archive)])
             item.setData(0,Qt.UserRole,job["id"])
             self.job_list.addTopLevelItem(item)
             if job["id"]==old:self.job_list.setCurrentItem(item)
@@ -3670,8 +3748,9 @@ class SatelliteWindow(QMainWindow):
     def _manual_capture_completed(self,result):
         self.file_details.setPlainText(json.dumps(result,indent=2,default=str))
         if result.get("wav"):
-            self.preview_wav=str(self.station.archive/result["wav"])
-            self._register_output_files([self.station.archive/result["wav"]])
+            wav_path=Path(result.get("root") or self.station.archive)/result["wav"]
+            self.preview_wav=str(wav_path)
+            self._register_output_files([wav_path])
         if result.get("wav_error"):
             self.statusBar().showMessage(
                 "Raw CU8 saved, but WAV conversion failed: "+result["wav_error"],14000)
@@ -3685,7 +3764,7 @@ class SatelliteWindow(QMainWindow):
         old=self.selected_path
         self.files.clear()
         for record in archives:
-            path=self.station.archive/record["file"]
+            path=Path(record.get("root") or self.station.archive)/record["file"]
             label, explanation = describe_local_file(path)
             item=QTreeWidgetItem([record["file"],label,small_bytes(record["bytes"]),
                                   local_time(record["modified"])])
@@ -3762,7 +3841,7 @@ class SatelliteWindow(QMainWindow):
         mode=self.analysis_mode.currentData()
         def work():
             report=analyze_cu8(source,rate,hz,mode=mode)
-            path=save_spectrum_report(source,report,self.station.archive)
+            path=save_spectrum_report(source,report,Path(source).parent)
             return report,path
         def done(value):
             report,path=value
