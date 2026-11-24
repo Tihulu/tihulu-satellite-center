@@ -318,6 +318,8 @@ class Station:
         self.pairing_token = pairing_secret(self.directory)
         self.archive = self.directory/"captures"
         self.archive.mkdir(exist_ok=True, mode=0o700)
+        # Default recording folder: None = use captures/; otherwise a Path inside allowed roots
+        self.default_recording_dir = self._load_default_recording_dir()
         self.lock = threading.RLock()
         self.device_lock = None
         self.process = None
@@ -381,6 +383,7 @@ class Station:
                         "last_disconnect": self.receiver_last_release,
                         "pending_schedules": sum(j.get("state") == "pending" for j in self.jobs),
                         "usb_power_control": False,
+                        "default_recording_folder": str(self.default_recording_dir) if self.default_recording_dir else None,
                     },
                     "orbit_cache": cached, "location_presets": LOCATIONS,
                     "profiles": PROFILES, "session": dict(self.session),
@@ -892,6 +895,10 @@ class Station:
     # may not escape the allowed roots through a symlink, and is created with
     # 0700 exactly like the default captures folder.
     def resolve_recording_dir(self, value):
+        # If the caller provides None/empty and we have an owner-selected default,
+        # use that default (the web/companion "no explicit folder" case).
+        if (value is None or value == "") and self.default_recording_dir is not None:
+            return self.default_recording_dir
         if value is None:
             return None
         if isinstance(value, Path):
@@ -944,6 +951,32 @@ class Station:
             return
         registry.append(entry)
         safe_write(self.directory/"recording_dirs.json", registry[-60:])
+
+    # Default recording folder (owner-selected, applied when no explicit dir given)
+    def _load_default_recording_dir(self):
+        try:
+            raw = safe_read(self.directory/"default_recording_dir.json", None)
+            if raw and isinstance(raw, str):
+                return Path(raw)
+        except Exception:
+            pass
+        return None
+
+    def set_default_recording_dir(self, value):
+        """Set the default recording folder (None to clear, or a valid path)."""
+        if value is None or value == "":
+            self.default_recording_dir = None
+            try:
+                (self.directory/"default_recording_dir.json").unlink(missing_ok=True)
+            except Exception:
+                pass
+            return
+        resolved = self.resolve_recording_dir(value)
+        self.default_recording_dir = resolved
+        safe_write(self.directory/"default_recording_dir.json", str(resolved))
+
+    def get_default_recording_dir(self):
+        return self.default_recording_dir
 
     def _recording_registry(self):
         return [row for row in safe_read(self.directory/"recording_dirs.json", [])
@@ -1047,6 +1080,10 @@ class Station:
                 raise ValueError("Native start must be in the future and inside predicted pass")
             if chosen+timedelta(seconds=duration+END_MARGIN_SECONDS)>los:
                 raise ValueError("Insufficient predicted LOS time for the full requested native recording")
+            # If the caller didn't specify a folder but we have an owner-selected default,
+            # use that default for this scheduled capture.
+            if output_dir is None:
+                output_dir = self.get_default_recording_dir()
             output_root = self.resolve_recording_dir(output_dir)
             # Create the operator's folder now so the disk budget below is
             # measured on the filesystem that will actually hold the file.
@@ -2336,6 +2373,16 @@ class Handler(BaseHTTPRequestHandler):
                 result = app.clear_job(data.get("job_id"))
             elif route == "/api/clear-finished-jobs":
                 result = app.clear_finished_jobs()
+            elif route == "/api/set-default-folder":
+                folder = data.get("folder")
+                try:
+                    app.set_default_recording_dir(folder)
+                    result = {"ok": True, "folder": str(app.default_recording_dir)}
+                except ValueError as exc:
+                    return app.reply(400, {"error": str(exc)})
+            elif route == "/api/clear-default-folder":
+                app.set_default_recording_dir(None)
+                result = {"ok": True}
             elif route == "/api/edit-job":
                 # Edit a pending schedule in place: the Station re-checks the pass
                 # window, the single-receiver reservation and the disk budget.

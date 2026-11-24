@@ -1772,8 +1772,15 @@ class SatelliteWindow(QMainWindow):
         folder_buttons.setSpacing(6)
         folder_buttons.addWidget(self._button("Choose folder…",self._choose_recording_folder),3)
         folder_buttons.addWidget(self._button("Use default",self._reset_recording_folder),1)
+        # Default recording folder controls (global, applied when empty)
+        self.default_folder_display=QLabel()
+        self.default_folder_display.setTextFormat(Qt.PlainText)
+        self._update_default_folder_display()
+        folder_buttons.addWidget(self._button("Set as default folder",self._set_default_recording_folder),2)
+        folder_buttons.addWidget(self._button("Clear default folder",self._clear_default_recording_folder),2)
         folder_row=QWidget();folder_row.setLayout(folder_buttons)
         form.addRow("Recording folder",self.pass_output_dir)
+        form.addRow("Default for future schedules", self.default_folder_display)
         form.addRow("",folder_row)
         self.arm_pass=self._button("Arm selected RF capture",self.schedule_selected_pass)
         form.addRow(self.arm_pass)
@@ -3446,6 +3453,32 @@ class SatelliteWindow(QMainWindow):
             f"~{estimate:.1f} MB · {parts} separate RF file(s) · "
             f"{seconds+gaps} s total elapsed ({gaps} s reserved gaps). "
             "No lossless continuity; receiver must be free and visible pass must fit.")
+
+    def _update_default_folder_display(self):
+        d = self.station.get_default_recording_dir()
+        if d:
+            self.default_folder_display.setText("Default folder: " + str(d))
+            self.default_folder_display.setStyleSheet("color: #8ad9ff;")
+        else:
+            self.default_folder_display.setText("No default folder (uses captures/)")
+            self.default_folder_display.setStyleSheet("color: #a9c5dd;")
+
+    def _set_default_recording_folder(self):
+        folder = self.pass_output_dir.text().strip() or None
+        if folder is None:
+            # No explicit folder in the field: use the current default captures folder
+            folder = str(self.station.archive)
+        try:
+            self.station.set_default_recording_dir(folder)
+            self._update_default_folder_display()
+            self.statusBar().showMessage("Default recording folder set to: " + folder, 10000)
+        except ValueError as e:
+            QMessageBox.warning(self, "Invalid folder", str(e))
+
+    def _clear_default_recording_folder(self):
+        self.station.set_default_recording_dir(None)
+        self._update_default_folder_display()
+        self.statusBar().showMessage("Default recording folder cleared; future schedules use captures/", 10000)
 
     def _choose_recording_folder(self):
         start=str(self.station.archive)
