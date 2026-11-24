@@ -166,7 +166,8 @@ class NativeReceiver(QObject):
             "status","connect","usb_open","sample","disconnect","stop",
             "capture","auto","auto_cancel","schedule","refresh","passes","geocode",
             "tle_catalog","orbit_snapshot","pass_preview","tle_custom","world_outline","tle_import",
-            "cancel_schedule","plan_candidates","plan_candidate_add","plan_candidate_remove",
+            "cancel_schedule","edit_job",
+            "plan_candidates","plan_candidate_add","plan_candidate_remove",
             "clear_job","clear_finished_jobs",
         }:
             self.reply.emit(request_id,json.dumps({
@@ -350,6 +351,11 @@ class NativeReceiver(QObject):
         if command=="plan_candidate_remove":
             return {"candidates":remove_candidate(st.directory,args.get("id")),
                     "source":"local-only","recording_scheduled":False}
+        if command=="edit_job":
+            # In-place edit of a pending schedule; never starts the receiver,
+            # so it is not part of the radio-confirmation set.
+            return st.edit_job(args.get("job_id"), args.get("run_at"),
+                               args.get("duration_seconds"))
         if command=="cancel_schedule":
             job_id=args.get("job_id")
             if not isinstance(job_id,str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,40}",job_id):

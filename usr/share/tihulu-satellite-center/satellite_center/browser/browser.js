@@ -1719,6 +1719,52 @@ function dismissNativeJob(job){
  const action=dismissAction(job,window);
  return action.call();
 }
+// Edit a pending native schedule in place: the companion's HTTP route in serve
+// mode, the allowlisted Qt WebChannel command in the desktop shell. The Station
+// re-checks the pass window, the receiver reservation and the disk budget.
+async function editNativeJob(jobId,runAt,durationSeconds){
+ if(typeof window.nativeEditScheduledJob==='function')
+  return window.nativeEditScheduledJob(jobId,runAt,durationSeconds);
+ if(nativeLocal()){
+  const state=await nativeRequest('/api/status');
+  return nativeRequest('/api/edit-job',{job_id:jobId,run_at:runAt,
+   duration_seconds:durationSeconds},state.csrf);
+ }
+ throw Error('Open the Debian app or the local companion to edit a native schedule.');
+}
+function renderNativeJobEditForm(job){
+ const form=document.createElement('form');form.className='native-job-edit calendar-edit';
+ const note=document.createElement('p');note.className='hint';note.setAttribute('role','status');
+ const time=document.createElement('input');time.type='datetime-local';time.required=true;
+ time.value=localDateInput(new Date(job.run_at||job.aos));
+ const seconds=document.createElement('input');seconds.type='number';
+ seconds.min='8';seconds.max='900';seconds.step='1';seconds.inputMode='numeric';
+ seconds.value=String(job.capture_seconds||60);seconds.required=true;
+ const unit=document.createElement('select');
+ unit.innerHTML='<option value="seconds">Seconds</option><option value="minutes">Minutes</option>';
+ const save=document.createElement('button');save.type='submit';
+ save.textContent='Save new time and length';
+ const row=document.createElement('label');row.textContent='Start · device local time';row.append(time);
+ const row2=document.createElement('label');row2.textContent='Recording seconds';row2.append(seconds);
+ const row3=document.createElement('label');row3.textContent='Length unit';row3.append(unit);
+ form.append(row,row2,row3,save,note);
+ form.addEventListener('submit',async event=>{
+  event.preventDefault();
+  save.disabled=true;note.textContent='Saving the edited schedule…';
+  try{
+   const total=Math.round(Number(seconds.value)*(unit.value==='minutes'?60:1));
+   const result=await editNativeJob(String(job.id),new Date(time.value).toISOString(),total);
+   note.textContent='Edited: '+new Date(result.run_at).toLocaleString()+' · '+
+    Number(result.capture_seconds)+' s. Everything else about this schedule is unchanged.';
+   window.dispatchEvent(new Event('tihulu-native-schedule-changed'));
+  }catch(error){
+   note.textContent='Edit refused: '+String(error?.message||error)+
+    '. The schedule is unchanged.';
+   save.disabled=false;
+  }
+ });
+ return form;
+}
 function renderNativeJobCards(){
  const container=$('jobs');
  container.replaceChildren();
@@ -1782,6 +1828,20 @@ function renderNativeJobCards(){
       cancel.disabled=false;
      });
    });card.append(cancel);
+  }
+  if(job.state==='pending'){
+   // Edit a pending schedule in place: the Station re-checks the pass window,
+   // the single-receiver reservation and the disk budget before saving.
+   const edit=document.createElement('button');edit.type='button';edit.className='secondary';
+   edit.textContent='Edit pending job';
+   edit.title='Change the start time or recording length of this pending schedule. '
+     +'The pass window and receiver reservation are re-checked.';
+   edit.addEventListener('click',()=>{
+    const existing=card.querySelector('.native-job-edit');
+    if(existing){existing.remove();return;}
+    card.append(renderNativeJobEditForm(job));
+   });
+   card.append(edit);
   }
   // A `running` capture has no dismiss control: nothing safe can be done to it
   // except wait for the receiver to release it.

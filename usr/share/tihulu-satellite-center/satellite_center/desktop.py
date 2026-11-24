@@ -2353,7 +2353,8 @@ class SatelliteWindow(QMainWindow):
         body.addWidget(self.job_note)
         self._row(body,
                   self._button("Cancel selected pending job",self.cancel_job),
-                  self._button("Edit selected automatic job",self.edit_auto_job))
+                  self._button("Edit selected automatic job",self.edit_auto_job),
+                  self._button("Edit selected pending job",self.edit_manual_job))
         self._row(body,
                   self._button("Remove selected record",self.remove_job_record),
                   self._button("Clear finished records",self.clear_finished_records))
@@ -3094,6 +3095,9 @@ class SatelliteWindow(QMainWindow):
                     self.auto_feedback.setText("Could not schedule: "+message)
                 elif key=="Arm scheduled RF":
                     self.pass_feedback.setText("Recording not scheduled: "+message)
+                elif key=="Edit scheduled pass":
+                    self._job_feedback("Edit refused: "+message+
+                                       " · the schedule is unchanged")
                 elif key=="Local TLE import":
                     self.tle_import_feedback.setText("TLE import failed: "+message)
                 elif key=="Worldwide geocoding":
@@ -3626,6 +3630,59 @@ class SatelliteWindow(QMainWindow):
         self._task("Edit automatic pass",lambda:self.station.edit_auto_schedule(
             job["id"],start,options.currentData(),dur.value() or None),
             lambda result:self.refresh_status())
+
+    def edit_manual_job(self):
+        """Edit a pending man/chain schedule in place (start time + duration).
+
+        The Station re-checks the predicted pass window, the single-receiver
+        reservation and the disk budget; a refusal leaves the schedule intact
+        and is reported in the same dedicated label the removal actions use.
+        """
+        item=self.job_list.currentItem()
+        if not item:
+            return self._job_feedback("Select a pending job to edit.")
+        job=next((j for j in self._calendar_jobs if j["id"]==item.data(0,Qt.UserRole)),None)
+        if not job:
+            return self._job_feedback("Job not found; refresh the calendar.")
+        if job.get("state")!="pending":
+            return self._job_feedback(
+                "Only a pending schedule can be edited; a finished record is history.")
+        if job.get("mission_id"):
+            # Automatic missions keep their own protocol-aware editor.
+            return self.edit_auto_job()
+        from PyQt5.QtWidgets import QDialog, QDialogButtonBox
+        dialog=QDialog(self)
+        dialog.setWindowTitle("Edit scheduled RF capture")
+        form=QFormLayout(dialog)
+        clock=QDateTimeEdit(native_datetime(job["run_at"]))
+        clock.setCalendarPopup(True)
+        clock.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
+        dur=QSpinBox()
+        dur.setRange(8,180 if job.get("mode")=="survey" else 900)
+        dur.setValue(int(job.get("capture_seconds") or 60))
+        form.addRow("Local start time",clock)
+        form.addRow("Recording seconds",dur)
+        form.addRow(self._hint(
+            "Sample rate, receiver profile and recording format stay the same. "
+            "Cancel and re-arm to change them. The pass window and the "
+            "single-receiver reservation are re-checked."))
+        buttons=QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel)
+        form.addRow(buttons)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        if dialog.exec_()!=QDialog.Accepted:
+            return
+        start=datetime.fromtimestamp(
+            clock.dateTime().toSecsSinceEpoch(),timezone.utc).isoformat()
+        def completed(result):
+            self._job_feedback(
+                "Edited "+str(result.get("satellite","the schedule"))+": "+
+                local_time(result.get("run_at"))+" · "+
+                str(result.get("capture_seconds"))+" s.")
+            self.refresh_status()
+        self._task("Edit scheduled pass",
+                   lambda:self.station.edit_job(job["id"],start,dur.value()),
+                   completed)
 
     def _job_feedback(self,text):
         # A dedicated label: the shared job_note hint is rewritten by every
