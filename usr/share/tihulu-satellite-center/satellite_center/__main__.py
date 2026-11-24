@@ -2375,11 +2375,11 @@ class Handler(BaseHTTPRequestHandler):
                 result = app.clear_finished_jobs()
             elif route == "/api/set-default-folder":
                 folder = data.get("folder")
-                try:
-                    app.set_default_recording_dir(folder)
-                    result = {"ok": True, "folder": str(app.default_recording_dir)}
-                except ValueError as exc:
-                    return app.reply(400, {"error": str(exc)})
+                # ValueError from the Station falls through to the handler's own
+                # 400 reply; calling app.reply() here closed the connection with
+                # no answer at all, because Station has no reply() method.
+                app.set_default_recording_dir(folder)
+                result = {"ok": True, "folder": str(app.default_recording_dir)}
             elif route == "/api/clear-default-folder":
                 app.set_default_recording_dir(None)
                 result = {"ok": True}
