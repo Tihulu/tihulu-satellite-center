@@ -116,3 +116,42 @@ directory) and asserts both surfaces of the desktop app:
 The QDropEvent payload must outlive the call (PyQt does not give the event ownership of
 the QMimeData), which the harness handles explicitly. Station scheduling is stubbed; no
 receiver, USB or service is touched. Expected: `13 passed, 0 failed`.
+
+## `edit_job_cdp.mjs` — editing a pending native schedule from the armed-jobs list
+
+Interactive DOM test, in a **real Chromium** over the DevTools Protocol, against the app's own local companion server. It reproduces the Qt WebChannel bridge with a stub that **proxies** the `status` and `edit_job` commands to the real companion (no Qt, no installs), seeds a pending job into a throwaway data directory, then drives the real **Edit pending job** control exactly like an operator would:
+
+* the pending native job card offers `Edit pending job` next to `Cancel native job`;
+* submitting the form (new duration) reaches `/api/edit-job` and the server stores the edited duration while mode, profile, sample rate and state stay as they were;
+* a start time the Station refuses is reported in the card (`Edit refused: …`) and the schedule on the server is unchanged.
+
+### Run
+
+    node tests/edit_job_cdp.mjs [appRoot]
+
+* Requires Node >= 22 (global WebSocket) and `chromium-browser` (or `chromium`) on PATH.
+  `SAT_PYTHON` selects the server interpreter (default `/usr/bin/python3`).
+* The port is picked randomly per run, so stale browser or server instances are never adopted.
+
+### Expected result
+
+    PASS the native bridge is initialised in the page
+    PASS the seeded pending job renders as a native card
+    PASS the pending card offers 'Edit pending job'
+    PASS submitting the form reports the edit
+    PASS the server stored the edited duration :: 90
+    PASS the edit left the rest of the schedule alone
+    PASS a start in the past is refused and reported
+    PASS the refused edit left the schedule unchanged
+    ALL CHECKS PASSED
+
+### Notes
+
+* No receiver is opened: the seeded job is only *edited*, never armed for capture.
+* The owner's real installation is never touched — throwaway data/home directories, random port.
+
+## `test_desktop_edit_job.py` — Qt "Edit selected pending job"
+
+    SAT_APP_ROOT=<dir containing satellite_center> python3 tests/test_desktop_edit_job.py
+
+Drives the real Qt window offscreen through the calendar's **Edit selected pending job** control: seeds a pending manual schedule, opens the dialog the way an operator would (the modal `exec_` is answered by the harness, the shared task-error warning is recorded instead of shown) and asserts that the dialog's seeded start and duration reach `Station.edit_job`, that the outcome is reported in the dedicated feedback label, that a refused edit is reported with the Station's reason and leaves the store intact, that a finished record is refused without touching the Station, and that an automatic mission is routed to its own editor. Expected: `10 passed, 0 failed`.

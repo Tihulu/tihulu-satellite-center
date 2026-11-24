@@ -1525,6 +1525,99 @@ class Station:
                     raise
             return {"cleared": removed, "remaining": len(self.jobs)}
 
+    def edit_job(self, job_id, run_at=None, seconds=None):
+        """Edit a pending scheduled capture in place (start time and duration).
+
+        Only a `pending` schedule is editable: a `running` capture is already
+        using the receiver and a terminal record is history. The same native
+        rules as schedule() are re-checked against the job's own stored pass
+        geometry (never a client-supplied one): the edited start must stay
+        inside the predicted pass and in the future, the edited duration must
+        fit before the LOS margin, the single-receiver reservation may not
+        overlap another pending/running job, and the disk reserve must still
+        cover the re-estimated file. Every check and the save run under the
+        station lock; a failed save rolls the record back, so an edit either
+        fully applies or leaves the previous schedule exactly as it was.
+        """
+        if not isinstance(job_id, str) or not re.fullmatch(r"[a-f0-9]{12}", job_id):
+            raise ValueError("A valid schedule identifier is required")
+        if run_at is None and seconds is None:
+            raise ValueError("Provide a new start time, duration, or both")
+        with self.lock:
+            target = None
+            for j in self.jobs:
+                if j.get("id") == job_id:
+                    target = j
+                    break
+            if target is None:
+                raise ValueError("Schedule not found")
+            if target.get("state") != "pending":
+                raise ValueError(
+                    "Only a pending schedule can be edited: a running capture "
+                    "already owns the receiver and a finished record is history")
+            previous = dict(target)
+            try:
+                aos = datetime.fromisoformat(target["aos"]).astimezone(UTC)
+                los = datetime.fromisoformat(target["los"]).astimezone(UTC)
+                if run_at is not None:
+                    if not isinstance(run_at, str) or len(run_at) > 70:
+                        raise ValueError("UTC ISO start required")
+                    try:
+                        chosen = datetime.fromisoformat(run_at)
+                    except ValueError as exc:
+                        raise ValueError("Invalid native scheduled start") from exc
+                    if chosen.tzinfo is None:
+                        raise ValueError("Scheduled start must include UTC offset")
+                    chosen = chosen.astimezone(UTC)
+                    if chosen < aos:
+                        raise ValueError("Edited start may not precede the predicted AOS")
+                    if chosen >= los:
+                        raise ValueError("Edited start may not follow the predicted LOS")
+                    if chosen < now()+timedelta(seconds=8):
+                        raise ValueError("Edited start must be in the future")
+                    target["run_at"] = stamp(chosen)
+                if seconds is not None:
+                    if type(seconds) is not int:
+                        raise ValueError("Edited duration must be whole seconds")
+                    if not 8 <= seconds <= MAX_CAPTURE_SECONDS:
+                        raise ValueError("Edited recording must be 8–900 whole seconds")
+                    target["capture_seconds"] = seconds
+                mode = target.get("mode")
+                duration = int(target.get("capture_seconds") or 0)
+                if mode == "survey" and duration > 180:
+                    raise ValueError("Spectrum-only survey is limited to 180 s; use IQ disk recording for longer windows")
+                start = datetime.fromisoformat(target.get("run_at") or target["aos"]).astimezone(UTC)
+                if start+timedelta(seconds=duration+END_MARGIN_SECONDS) > los:
+                    raise ValueError("Insufficient predicted LOS time for the full edited recording")
+                for other in self.jobs:
+                    if other is target or other.get("id") == job_id:
+                        continue
+                    if other.get("state") not in ("pending", "running"):
+                        continue
+                    a = datetime.fromisoformat(other.get("run_at") or other["aos"]).astimezone(UTC)
+                    b = a+timedelta(seconds=int(other.get("capture_seconds") or 900))
+                    if start < b+timedelta(seconds=20) and \
+                            start+timedelta(seconds=duration) > a-timedelta(seconds=20):
+                        raise ValueError("Single RTL-SDR already reserved for an overlapping capture")
+                estimate = ((2*target.get("sample_rate", 1024000)+64000)*duration
+                            if mode == "iq_and_fm_wav"
+                            else 2*target.get("sample_rate", 1024000)*duration if mode == "iq"
+                            else 96_000*duration if mode in ("sstv_audio", "fm_audio")
+                            else 1_000_000)
+                if estimate > MAX_IQ_BYTES:
+                    raise ValueError("Edited duration and rate exceed the safe 2 GB disk limit")
+                reserve = sum(int(o.get("estimated_bytes") or 0) for o in self.jobs
+                              if o is not target and o.get("state") in ("pending", "running"))
+                if shutil.disk_usage(self.archive).free - reserve < estimate+200_000_000:
+                    raise ValueError("Insufficient local disk space for the edited recording and safety reserve")
+                target["estimated_bytes"] = estimate
+                self.save_jobs()
+            except Exception:
+                target.clear()
+                target.update(previous)
+                raise
+            return dict(target)
+
     def start_scheduler(self):
         if self.closed.is_set():
             return
@@ -2243,6 +2336,11 @@ class Handler(BaseHTTPRequestHandler):
                 result = app.clear_job(data.get("job_id"))
             elif route == "/api/clear-finished-jobs":
                 result = app.clear_finished_jobs()
+            elif route == "/api/edit-job":
+                # Edit a pending schedule in place: the Station re-checks the pass
+                # window, the single-receiver reservation and the disk budget.
+                result = app.edit_job(data.get("job_id"), data.get("run_at"),
+                                      data.get("duration_seconds"))
             elif route == "/api/capture":
                 # Must not block request thread for full capture; result via status and archive.
                 seconds = data.get("seconds", 18)

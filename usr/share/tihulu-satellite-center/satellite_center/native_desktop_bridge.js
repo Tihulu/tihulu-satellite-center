@@ -704,6 +704,8 @@
       window.nativeScheduleStatus=()=>lookup('status');
       window.nativeComputeStatus=()=>lookup('status').then(info=>info.compute);
       window.nativeCancelScheduledJob=job_id=>lookup('cancel_schedule',{job_id});
+      window.nativeEditScheduledJob=(job_id,run_at,duration_seconds)=>
+        lookup('edit_job',{job_id,run_at,duration_seconds});
       // Dismiss one finished record, or every finished record at once. Pending
       // schedules are never dropped silently: the station refuses them.
       window.nativeClearScheduledJob=job_id=>lookup('clear_job',{job_id});
