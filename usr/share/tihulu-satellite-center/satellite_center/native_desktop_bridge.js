@@ -702,6 +702,10 @@
       window.nativeDeletePlanningCandidate=id=>lookup('plan_candidate_remove',{id})
         .then(result=>result.candidates||[]);
       window.nativeScheduleStatus=()=>lookup('status');
+      // Global default recording folder, so the installed desktop UI can set
+      // and clear it without leaving the page. The Station re-validates the path.
+      window.nativeSetDefaultFolder=folder=>lookup("set_default_folder",{folder});
+      window.nativeClearDefaultFolder=()=>lookup("clear_default_folder",{});
       window.nativeComputeStatus=()=>lookup('status').then(info=>info.compute);
       window.nativeCancelScheduledJob=job_id=>lookup('cancel_schedule',{job_id});
       window.nativeEditScheduledJob=(job_id,run_at,duration_seconds)=>

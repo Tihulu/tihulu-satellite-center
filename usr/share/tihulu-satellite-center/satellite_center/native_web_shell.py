@@ -169,6 +169,7 @@ class NativeReceiver(QObject):
             "cancel_schedule","edit_job",
             "plan_candidates","plan_candidate_add","plan_candidate_remove",
             "clear_job","clear_finished_jobs",
+            "set_default_folder","clear_default_folder",
         }:
             self.reply.emit(request_id,json.dumps({
                 "ok":False,"error":"Native command is not allowlisted"}))
@@ -367,6 +368,18 @@ class NativeReceiver(QObject):
             return st.clear_job(args.get("job_id"))
         if command=="clear_finished_jobs":
             return st.clear_finished_jobs()
+        # The global default recording folder chosen by the owner. The Station
+        # still enforces its own allowed roots (its data folder or the user home
+        # folder), so a web page can never turn this into an arbitrary write.
+        if command=="set_default_folder":
+            st.set_default_recording_dir(args.get("folder"))
+            return {"ok":True,
+                    "folder":str(st.default_recording_dir) if st.default_recording_dir else None,
+                    "note":"Applied when a capture has no folder of its own"}
+        if command=="clear_default_folder":
+            st.set_default_recording_dir(None)
+            return {"ok":True,"folder":None,
+                    "note":"Captures return to the default captures folder"}
         if command=="pass_preview":
             lat=float(args.get("lat"));lon=float(args.get("lon"))
             norad=args.get("norad")
