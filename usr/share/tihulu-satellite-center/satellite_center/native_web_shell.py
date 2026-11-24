@@ -491,7 +491,8 @@ class NativeReceiver(QObject):
             seconds=int(args.get("seconds",60))
             starts=datetime.fromtimestamp(int(args["when_millis"])/1000,timezone.utc).isoformat()
             return st.schedule(possible[0]["id"],profile,mode,starts,seconds,
-                               sample_rate=int(args.get("rate",1024000)))
+                               sample_rate=int(args.get("rate",1024000)),
+                               output_dir=args.get("output_dir"))
         raise ValueError("Unsupported native operation")
 
 class ExactWebWindow(QMainWindow):

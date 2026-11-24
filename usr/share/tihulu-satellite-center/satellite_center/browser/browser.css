@@ -367,3 +367,7 @@ border:1px solid #375471;border-radius:8px;margin:0;background:#081727}
 @media(max-width:440px){
  #satellite-tracking-maps .map-toolbar{grid-template-columns:minmax(0,1fr)}
 }
+
+/* Analysis-section drag & drop affordance (local files only). */
+section.drop-active{outline:2px dashed #8ad9ff;outline-offset:-6px;background:#12263f}
+.drop-active .iq-controls,.drop-active .image-source-panel{opacity:.94}

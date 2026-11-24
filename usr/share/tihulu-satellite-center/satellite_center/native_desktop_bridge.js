@@ -569,7 +569,7 @@
       if(addedForm)enhanceAllNativePassForms();
     }).observe(passList,{childList:true,subtree:true});
   }
-  document.addEventListener('submit',event=>{
+  document.addEventListener('submit',async event=>{
     const form=event.target.closest?.('form.pass-schedule-form');
     if(!form)return;
     event.preventDefault();event.stopImmediatePropagation();
@@ -605,6 +605,19 @@
     if((norad===57166||norad===59051)&&(!args.raw||args.wav)){
       if(warn)warn.textContent='Meteor LRPT requires original IQ (.cu8) only. Disable WAV / Robot36.';
       return;
+    }
+    // Optional per-job recording folder: the same client-side rule the
+    // companion page uses; the server validates it again, strictly.
+    const folderInput=form.querySelector('input[type="text"]');
+    if(folderInput&&folderInput.value.trim()){
+      try{
+        const {normalizeOutputDir}=await import('./recording_dir.mjs?v=20261123-per-job-dir-v1');
+        const outputDir=normalizeOutputDir(folderInput.value);
+        if(outputDir)args.output_dir=outputDir;
+      }catch(error){
+        if(warn)warn.textContent='Could not schedule: '+String(error?.message||error);
+        return;
+      }
     }
     if(warn)warn.textContent='Verifying native orbital geometry and receiver availability…';
     lookup('schedule',args).then(result=>{
