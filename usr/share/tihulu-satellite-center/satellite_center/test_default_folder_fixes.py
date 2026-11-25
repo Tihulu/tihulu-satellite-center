@@ -190,5 +190,67 @@ class NativeSurfaceCase(unittest.TestCase):
         self.assertIn("tihulu-native-bridge-ready", page)
 
 
+
+
+class PersistedDefaultCase(unittest.TestCase):
+    """A persisted default is re-validated on load, never trusted blindly."""
+
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp(prefix="sat-persist-home-"))
+        patcher = mock.patch.object(Path, "home", classmethod(lambda cls: self.home))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.data = self.home / ".local" / "share" / "tihulu-satellite-center"
+        self.file = self.data / "default_recording_dir.json"
+
+    def load(self, contents):
+        self.data.mkdir(parents=True, exist_ok=True)
+        # set_default_recording_dir/safe_write persist a JSON string, and
+        # safe_read parses JSON, so the file must hold a quoted string.
+        self.file.write_text(json.dumps(contents), encoding="utf-8")
+        station = main.Station(self.data)
+        self.addCleanup(station.close)
+        return station
+
+    def test_a_persisted_path_outside_the_allowed_roots_is_ignored(self):
+        station = self.load("/etc")
+        self.assertIsNone(station.get_default_recording_dir())
+        self.assertEqual(station.prepare_recording_dir(None), station.archive)
+
+    def test_a_persisted_traversal_path_is_ignored(self):
+        self.assertIsNone(self.load("../escape").get_default_recording_dir())
+
+    def test_an_overlong_or_empty_persisted_value_is_ignored(self):
+        self.assertIsNone(self.load("").get_default_recording_dir())
+        self.assertIsNone(self.load("x" * 250).get_default_recording_dir())
+
+    def test_a_persisted_path_that_is_a_file_is_ignored(self):
+        victim = self.home / "not-a-folder"
+        victim.write_text("not a directory", encoding="utf-8")
+        self.assertIsNone(self.load(str(victim)).get_default_recording_dir())
+
+    def test_a_persisted_path_elsewhere_in_home_is_still_used(self):
+        chosen = self.home / "sat-recordings"
+        station = self.load(str(chosen))
+        self.assertEqual(station.get_default_recording_dir(), chosen.resolve(strict=False))
+
+    def test_a_persisted_relative_name_is_still_resolved_under_captures(self):
+        station = self.load("ISS-DEFAULT")
+        expected = (station.archive / "ISS-DEFAULT").resolve()
+        self.assertEqual(station.get_default_recording_dir(), expected)
+        # Reading a default does not create the folder; it is created when a
+        # capture is prepared, exactly like a freshly chosen one.
+        self.assertEqual(station.prepare_recording_dir(None), expected)
+        self.assertTrue(expected.is_dir())
+
+
+class BrowserOnlySurfaceCase(unittest.TestCase):
+    def test_the_browser_only_page_says_the_default_folder_is_unavailable(self):
+        page = (APP / "browser" / "browser.js").read_text(encoding="utf-8")
+        self.assertIn("default-folder-browser-note", page)
+        self.assertIn("defaultFolderTransport", page)
+        self.assertIn("a browser page cannot choose a folder on this computer", page)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
