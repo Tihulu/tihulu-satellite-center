@@ -191,7 +191,6 @@ class NativeSurfaceCase(unittest.TestCase):
 
 
 
-
 class PersistedDefaultCase(unittest.TestCase):
     """A persisted default is re-validated on load, never trusted blindly."""
 
