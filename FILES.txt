@@ -45,6 +45,8 @@ usr/share/tihulu-satellite-center/satellite_center/browser/reception.css
 usr/share/tihulu-satellite-center/satellite_center/browser/reception.html
 usr/share/tihulu-satellite-center/satellite_center/browser/reception.mjs
 usr/share/tihulu-satellite-center/satellite_center/browser/reception_catalog.mjs
+usr/share/tihulu-satellite-center/satellite_center/browser/recording_dir.mjs
+usr/share/tihulu-satellite-center/satellite_center/browser/recording_dir.test.mjs
 usr/share/tihulu-satellite-center/satellite_center/browser/results_zip.mjs
 usr/share/tihulu-satellite-center/satellite_center/browser/satellite_calendar.mjs
 usr/share/tihulu-satellite-center/satellite_center/browser/satellite_imagery.mjs
@@ -85,5 +87,7 @@ usr/share/tihulu-satellite-center/satellite_center/native_web_shell.py
 usr/share/tihulu-satellite-center/satellite_center/npu_sstv.py
 usr/share/tihulu-satellite-center/satellite_center/planning_store.py
 usr/share/tihulu-satellite-center/satellite_center/sstv_series35.py
+usr/share/tihulu-satellite-center/satellite_center/test_job_edit.py
 usr/share/tihulu-satellite-center/satellite_center/test_job_removal.py
+usr/share/tihulu-satellite-center/satellite_center/test_recording_dirs.py
 usr/share/tihulu-satellite-center/satellite_center/window_visibility.py
