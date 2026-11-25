@@ -148,7 +148,13 @@ const nativeReceiver=()=>nativeLocal()||window.nativeRFTransport==="rtl_sdr";
     }catch(e){ console.warn('Failed to load default folder controls:',e); }
   };
   if(window.nativeWebBridgeReady)mountDefaultFolderControls();
-  else window.addEventListener('tihulu-native-bridge-ready',mountDefaultFolderControls,{once:true});
+  else{
+    window.addEventListener('tihulu-native-bridge-ready',mountDefaultFolderControls,{once:true});
+    // A page with no Qt transport at all (the standalone Web/PWA) never
+    // receives that event, so it must not wait forever: mount its
+    // explanation now. The desktop shell has window.qt and waits.
+    if(!window.qt)mountDefaultFolderControls();
+  }
   if(nativeLocal())mountDefaultFolderControls();
 async function nativeRequest(route,payload=null,csrf=null){
  const opts={cache:"no-store",credentials:"same-origin"};
