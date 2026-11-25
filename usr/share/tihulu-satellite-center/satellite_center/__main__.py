@@ -902,14 +902,20 @@ class Station:
         if value is None:
             return None
         if isinstance(value, Path):
+            # An already-resolved internal value: schedule() resolves once and
+            # prepare_recording_dir() resolves again, so the sanity limits must
+            # not be re-applied to the absolute form of a path the operator
+            # already typed. The allowed-root check below still runs.
             text = str(value)
+            already_resolved = True
         elif isinstance(value, str):
             text = value.strip()
+            already_resolved = False
         else:
             raise ValueError("Recording directory must be a path")
         if not text:
             return None
-        if len(text) > 200 or "\x00" in text:
+        if not already_resolved and (len(text) > 200 or "\x00" in text):
             raise ValueError("Recording directory path is not acceptable")
         if ".." in Path(text).parts:
             raise ValueError("Recording directory may not contain '..'")
@@ -2375,11 +2381,11 @@ class Handler(BaseHTTPRequestHandler):
                 result = app.clear_finished_jobs()
             elif route == "/api/set-default-folder":
                 folder = data.get("folder")
-                try:
-                    app.set_default_recording_dir(folder)
-                    result = {"ok": True, "folder": str(app.default_recording_dir)}
-                except ValueError as exc:
-                    return app.reply(400, {"error": str(exc)})
+                # ValueError from the Station falls through to the handler's own
+                # 400 reply; calling app.reply() here closed the connection with
+                # no answer at all, because Station has no reply() method.
+                app.set_default_recording_dir(folder)
+                result = {"ok": True, "folder": str(app.default_recording_dir)}
             elif route == "/api/clear-default-folder":
                 app.set_default_recording_dir(None)
                 result = {"ok": True}

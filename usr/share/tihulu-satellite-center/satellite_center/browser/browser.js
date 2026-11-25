@@ -60,6 +60,83 @@ const CHAIN_SEGMENT_GAP_SECONDS=6;
 const diskStreamingAvailable=()=>Boolean(window.isSecureContext&&typeof window.showSaveFilePicker==="function");
 const nativeLocal=()=>location.protocol==="http:"&&["localhost","127.0.0.1"].includes(location.hostname);
 const nativeReceiver=()=>nativeLocal()||window.nativeRFTransport==="rtl_sdr";
+
+  // Default recording folder controls. They appear wherever a local receiver can
+  // actually write files: the HTTP companion (nativeLocal) and the installed Qt
+  // WebEngine desktop shell (tihulu:// plus the allowlisted WebChannel). A plain
+  // Web/PWA page cannot choose a desktop folder, so it never shows them.
+  let defaultFolderControlsMounted=false;
+  const mountDefaultFolderControls=async()=>{
+    if(defaultFolderControlsMounted)return;
+    defaultFolderControlsMounted=true;
+    try{
+      const overHttp=nativeLocal();
+      const holder=document.createElement('div');
+      holder.id='default-folder-controls';
+      holder.className='schedule-wide';
+      const defLabel=document.createElement('p');defLabel.id='default-folder-label';defLabel.className='hint';
+      const folderInput=document.createElement('input');
+      folderInput.id='default-folder-input';folderInput.type='text';
+      folderInput.placeholder='Subdirectory name or folder path, e.g. ISS-SSTV-2026-11';
+      const setBtn=document.createElement('button');setBtn.type='button';setBtn.className='secondary';
+      setBtn.textContent='Set as default folder';
+      const clrBtn=document.createElement('button');clrBtn.type='button';clrBtn.className='secondary';
+      clrBtn.textContent='Clear default folder';
+      const readState=async()=>overHttp
+        ? nativeRequest('/api/status')
+        : window.nativeScheduleStatus();
+      const show=async()=>{
+        const state=await readState();
+        const folder=state.hardware && state.hardware.default_recording_folder;
+        defLabel.textContent=folder
+          ? ('Default recording folder: '+folder)
+          : 'No default recording folder (uses captures/)';
+        return state;
+      };
+      setBtn.onclick=async()=>{
+        const folder=folderInput.value.trim();
+        if(!folder)return;
+        setBtn.disabled=true;
+        try{
+          if(overHttp){
+            const state=await show();
+            await nativeRequest('/api/set-default-folder',{folder},state.csrf);
+          }else{
+            await window.nativeSetDefaultFolder(folder);
+          }
+          await show();
+          window.dispatchEvent(new Event('tihulu-native-schedule-changed'));
+        }catch(error){
+          defLabel.textContent='Default folder not changed: '+(error && error.message || error);
+        }finally{ setBtn.disabled=false; }
+      };
+      clrBtn.onclick=async()=>{
+        clrBtn.disabled=true;
+        try{
+          if(overHttp){
+            const state=await show();
+            await nativeRequest('/api/clear-default-folder',{},state.csrf);
+          }else{
+            await window.nativeClearDefaultFolder();
+          }
+          await show();
+          window.dispatchEvent(new Event('tihulu-native-schedule-changed'));
+        }catch(error){
+          defLabel.textContent='Default folder not changed: '+(error && error.message || error);
+        }finally{ clrBtn.disabled=false; }
+      };
+      holder.append(defLabel,folderInput,setBtn,clrBtn);
+      // Outside the schedule form: the form keeps exactly one text input
+      // so the recording-folder field stays unambiguous.
+      const host=document.getElementById('schedule-center')||document.body;
+      host.append(holder);
+      defLabel.textContent='Reading the default recording folder...';
+      await show();
+    }catch(e){ console.warn('Failed to load default folder controls:',e); }
+  };
+  if(window.nativeWebBridgeReady)mountDefaultFolderControls();
+  else window.addEventListener('tihulu-native-bridge-ready',mountDefaultFolderControls,{once:true});
+  if(nativeLocal())mountDefaultFolderControls();
 async function nativeRequest(route,payload=null,csrf=null){
  const opts={cache:"no-store",credentials:"same-origin"};
  if(payload!==null){opts.method="POST";opts.headers={"Content-Type":"application/json"};opts.body=JSON.stringify({...payload,csrf});}
@@ -1163,7 +1240,7 @@ function appendPass(pass){
   const defaultFolderLabel=document.createElement('label');
   defaultFolderLabel.className='schedule-wide';
   const useDefaultFolder=document.createElement('input');useDefaultFolder.type='checkbox';
-  defaultFolderLabel.append(useDefaultFolder,' Use my saved default folder (set in the desktop app or via the companion page).');
+  defaultFolderLabel.append(useDefaultFolder,' Use my saved default folder (set it here in the desktop app or companion).');
   const folderHint=document.createElement('p');
   folderHint.className='hint schedule-wide';
   folderHint.textContent='Native companion only: optional subdirectory under its captures folder where these recordings are written (for example ISS-SSTV-2026-11). Leave empty for the default captures folder. The installed desktop app can choose any folder.';
@@ -1230,29 +1307,6 @@ function appendPass(pass){
   duration.addEventListener('input',refreshBudget);rate.addEventListener('input',refreshBudget);
   updateNativeFormat();
   refreshBudget();
-  // Default folder controls (only for native companion) — loaded asynchronously
-  if(nativeLocal()){
-    (async ()=>{
-      try{
-        const status=await nativeRequest('/api/status');
-        const defaultFolder=status.default_recording_folder||null;
-        const defLabel=document.createElement('p');defLabel.id='default-folder-label';defLabel.className='hint';
-        defLabel.textContent=defaultFolder?'Default recording folder: '+defaultFolder:'No default recording folder (uses captures/)';
-        const setBtn=document.createElement('button');setBtn.type='button';setBtn.className='secondary';
-        setBtn.textContent='Set current folder as default';
-        const clrBtn=document.createElement('button');clrBtn.type='button';clrBtn.className='secondary';
-        clrBtn.textContent='Clear default folder';
-        setBtn.onclick=()=>{
-          const folder=prompt('Enter absolute path or subdirectory for default recording folder:');
-          if(folder){ nativeRequest('/api/set-default-folder',{folder},status.csrf).then(r=>{window.dispatchEvent(new Event("tihulu-native-schedule-changed"));}); }
-        };
-        clrBtn.onclick=()=>{ nativeRequest('/api/clear-default-folder',{},status.csrf).then(r=>{window.dispatchEvent(new Event("tihulu-native-schedule-changed"));}); };
-        form.append(defLabel,setBtn,clrBtn);
-      }catch(e){
-        console.warn('Failed to load default folder controls:', e);
-      }
-    })();
-  }
   form.append(timeLabel,frequencyLabel,durationLabel,unitLabel,rateLabel,saveLabel,wavLabel,folderLabel,folderHint,budgetLabel,localLink,explanation,alert,planOnly,confirm);
   form.addEventListener('submit',async event=>{
     event.preventDefault();

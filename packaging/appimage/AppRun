@@ -1,0 +1,17 @@
+#!/bin/sh
+# Start the bundled interpreter; the Python CLI defaults to the native web UI.
+set -eu
+HERE="$(dirname "$(readlink -f "$0")")"
+unset PYTHONPATH QT_PLUGIN_PATH LD_LIBRARY_PATH LD_PRELOAD QT_QPA_PLATFORM_PLUGIN_PATH
+export PYTHONHOME="$HERE/usr"
+export PYTHONUNBUFFERED=1
+export PYTHONNOUSERSITE=1
+export PYTHONDONTWRITEBYTECODE=1
+export PYTHONPATH="$HERE/usr/lib/python3.12/site-packages:$HERE/usr/share/satellite-center"
+export QT_PLUGIN_PATH="$HERE/usr/lib/python3.12/site-packages/PyQt5/Qt5/plugins"
+export QT_QPA_PLATFORM_PLUGIN_PATH="$QT_PLUGIN_PATH/platforms"
+if [ -n "${WAYLAND_DISPLAY:-}" ]; then export QT_QPA_PLATFORM=xcb; fi
+export TIHULU_SATELLITE_DATA="${TIHULU_SATELLITE_DATA:-$HOME/.local/share/tihulu-satellite-center}"
+mkdir -p "$TIHULU_SATELLITE_DATA"
+cd "$HERE"
+exec "$HERE/usr/bin/python3.12" -m satellite_center "$@"
