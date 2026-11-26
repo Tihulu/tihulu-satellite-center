@@ -960,13 +960,26 @@ class Station:
 
     # Default recording folder (owner-selected, applied when no explicit dir given)
     def _load_default_recording_dir(self):
+        """Load the persisted default, re-validating it exactly like a new choice.
+
+        A stale or tampered value must never silently redirect captures: it is
+        dropped and captures/ is used instead unless it still passes every check
+        the operator would have to pass. The invalid file is left in place rather
+        than deleted, so no owner data is destroyed on load.
+        """
         try:
             raw = safe_read(self.directory/"default_recording_dir.json", None)
-            if raw and isinstance(raw, str):
-                return Path(raw)
         except Exception:
-            pass
-        return None
+            return None
+        if not raw or not isinstance(raw, str) or not raw.strip():
+            return None
+        try:
+            # Validated as operator input (a string), not as an already-resolved
+            # path, so the traversal, length, allowed-root and not-a-file checks
+            # all apply to whatever the file contains.
+            return self.resolve_recording_dir(raw.strip())
+        except ValueError:
+            return None
 
     def set_default_recording_dir(self, value):
         """Set the default recording folder (None to clear, or a valid path)."""

@@ -66,11 +66,25 @@ const nativeReceiver=()=>nativeLocal()||window.nativeRFTransport==="rtl_sdr";
   // WebEngine desktop shell (tihulu:// plus the allowlisted WebChannel). A plain
   // Web/PWA page cannot choose a desktop folder, so it never shows them.
   let defaultFolderControlsMounted=false;
+  // where a recording folder can actually be chosen: the local companion (http)
+  // or the installed Qt WebEngine desktop shell (WebChannel). A plain Web/PWA
+  // page has neither, so it says so instead of hiding the feature silently.
+  const defaultFolderTransport=()=>nativeLocal()?'http':(nativeReceiver()?'bridge':null);
   const mountDefaultFolderControls=async()=>{
     if(defaultFolderControlsMounted)return;
     defaultFolderControlsMounted=true;
+    const host=document.getElementById('schedule-center')||document.body;
+    const transport=defaultFolderTransport();
+    if(!transport){
+      const note=document.createElement('p');
+      note.id='default-folder-browser-note';
+      note.className='hint schedule-wide';
+      note.textContent='A default recording folder cannot be set from this page: a browser page cannot choose a folder on this computer. Set it in the installed desktop app, or in the local companion page at http://127.0.0.1:8791.';
+      host.append(note);
+      return;
+    }
     try{
-      const overHttp=nativeLocal();
+      const overHttp=transport==='http';
       const holder=document.createElement('div');
       holder.id='default-folder-controls';
       holder.className='schedule-wide';
@@ -128,14 +142,19 @@ const nativeReceiver=()=>nativeLocal()||window.nativeRFTransport==="rtl_sdr";
       holder.append(defLabel,folderInput,setBtn,clrBtn);
       // Outside the schedule form: the form keeps exactly one text input
       // so the recording-folder field stays unambiguous.
-      const host=document.getElementById('schedule-center')||document.body;
       host.append(holder);
       defLabel.textContent='Reading the default recording folder...';
       await show();
     }catch(e){ console.warn('Failed to load default folder controls:',e); }
   };
   if(window.nativeWebBridgeReady)mountDefaultFolderControls();
-  else window.addEventListener('tihulu-native-bridge-ready',mountDefaultFolderControls,{once:true});
+  else{
+    window.addEventListener('tihulu-native-bridge-ready',mountDefaultFolderControls,{once:true});
+    // A page with no Qt transport at all (the standalone Web/PWA) never
+    // receives that event, so it must not wait forever: mount its
+    // explanation now. The desktop shell has window.qt and waits.
+    if(!window.qt)mountDefaultFolderControls();
+  }
   if(nativeLocal())mountDefaultFolderControls();
 async function nativeRequest(route,payload=null,csrf=null){
  const opts={cache:"no-store",credentials:"same-origin"};
