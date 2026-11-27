@@ -249,6 +249,13 @@ class ArchiveTests(StationCase):
 class CaptureTests(StationCase):
     def test_a_survey_capture_writes_into_the_selected_folder(self):
         folder = self.station.prepare_recording_dir("captured-here")
+        # Never claim a receiver: stub acquisition exactly like the sibling tests,
+        # so this runs on a machine with no RTL-SDR attached and cannot open the
+        # operator tuner.
+        self.station._launch_receiver = \
+            lambda command, **kwargs: FakeProc(kwargs.get("stdout"))
+        self.station._acquire = lambda: None
+        self.station._release = lambda: None
         with mock.patch("shutil.which", return_value="/usr/bin/rtl_power"):
             result = self.station.capture("iss_sstv", "survey", 18, output_dir="captured-here")
         self.assertTrue(result["file"].endswith(".json"))
