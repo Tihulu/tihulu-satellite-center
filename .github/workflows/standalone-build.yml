@@ -136,7 +136,10 @@ jobs:
           SAT_APP_ROOT: "${{ github.workspace }}/usr/share/tihulu-satellite-center"
           PYTHONDONTWRITEBYTECODE: "1"
           QT_QPA_PLATFORM: offscreen
-        run: timeout 600 python3 -u tests/test_desktop_removal.py
+        run: |
+          set -euo pipefail
+          timeout 600 python3 -u tests/test_desktop_removal.py
+          timeout 300 python3 -u tests/test_desktop_default_folder.py
 
   native-shell-smoke:
     runs-on: ubuntu-24.04
