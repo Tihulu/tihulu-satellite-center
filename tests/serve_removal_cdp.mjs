@@ -16,13 +16,31 @@
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import net from "node:net";
 import { join } from "node:path";
 
 const APP_ROOT = process.argv[2] || "../usr/share/tihulu-satellite-center";
 // auto_reception_ui.mjs only enables the companion API when the page is served
 // from the app's default port, so this surface can only be tested there.
+// A random port can already be held by an unrelated browser or companion on this
+// machine; connect-testing first keeps the harness on its own page.
+async function freePort(from, span) {
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const candidate = from + Math.floor(Math.random() * span);
+    const taken = await new Promise((resolve) => {
+      const socket = net.createConnection({ host: "127.0.0.1", port: candidate });
+      const done = (value) => { socket.destroy(); resolve(value); };
+      socket.setTimeout(400);
+      socket.once("connect", () => done(true));
+      socket.once("timeout", () => done(false));
+      socket.once("error", () => done(false));
+    });
+    if (!taken) return candidate;
+  }
+  throw new Error("no free port found in range");
+}
 const PORT = 8791;
-const CDP = 9400 + Math.floor(Math.random() * 400);
+const CDP = await freePort(9400, 400);
 const BASE = `http://127.0.0.1:${PORT}`;
 const PAGE_URL = `${BASE}/browser/reception.html`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -104,7 +122,7 @@ const run = async () => {
   for (let i = 0; i < 60; i++) {
     try {
       const list = await (await fetch(`http://127.0.0.1:${CDP}/json/list`)).json();
-      target = list.find((t) => t.type === "page") || null;
+      target = list.find((t) => t.type === "page" && t.url.indexOf(":" + PORT + "/") >= 0) || null;
       if (target) break;
     } catch {}
     await sleep(1000);

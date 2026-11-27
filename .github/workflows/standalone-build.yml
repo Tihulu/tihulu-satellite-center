@@ -92,6 +92,8 @@ jobs:
             usr/share/tihulu-satellite-center/satellite_center/browser/usb_diagnostics.test.mjs
       - name: "Interactive DOM test: scheduled-job removal (web + native code path)"
         run: node tests/job_removal_cdp.mjs usr/share/tihulu-satellite-center
+      - name: "Interactive DOM test: the global default recording folder (set, refuse, clear)"
+        run: node tests/default_folder_cdp.mjs usr/share/tihulu-satellite-center
 
   interactive-serve-removal-ui:
     runs-on: ubuntu-24.04
