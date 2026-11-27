@@ -92,7 +92,7 @@ const run = async () => {
   const profile = mkdtempSync(join(tmpdir(), "sat-cdp-prof-"));
   cleanup.push(profile);
   const browser = spawn("chromium-browser", [
-    "--headless", "--no-sandbox", "--disable-gpu",
+    "--headless", "--disable-gpu", "--disable-dev-shm-usage",
     `--remote-debugging-port=${CDP}`, `--user-data-dir=${profile}`,
     `http://127.0.0.1:${PORT}/browser/index.html`,
   ], { stdio: "ignore" });

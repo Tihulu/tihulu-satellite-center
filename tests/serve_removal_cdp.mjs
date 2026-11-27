@@ -113,7 +113,7 @@ const run = async () => {
   const profile = mkdtempSync(join(tmpdir(), "sat-serve-prof-"));
   cleanup.push(profile);
   const browser = spawn("chromium-browser", [
-    "--headless", "--no-sandbox", "--disable-gpu", "--no-first-run",
+    "--headless", "--disable-gpu", "--disable-dev-shm-usage", "--no-first-run",
     "--no-default-browser-check", `--remote-debugging-port=${CDP}`,
     `--user-data-dir=${profile}`, PAGE_URL,
   ], { stdio: "ignore" });
