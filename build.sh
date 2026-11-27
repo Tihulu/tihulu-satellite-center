@@ -16,7 +16,9 @@ verify() {
     if [ ! -f SHA256SUMS ]; then echo "missing SHA256SUMS"; return 1; fi
     sha256sum -c SHA256SUMS --quiet || { echo "digest mismatch"; return 1; }
     count=$(wc -l < FILES.txt)
-    have=$(find usr -type f | wc -l)
+    # Bytecode is a build artefact, not payload: a developer run that forgets
+    # PYTHONDONTWRITEBYTECODE=1 must not fail verification for it.
+    have=$(find usr -type f -name "*.pyc" -prune -o -type f -print | wc -l)
     [ "$count" = "$have" ] || { echo "inventory mismatch: FILES.txt=$count tree=$have"; return 1; }
     while IFS= read -r name; do
         [ -f "$name" ] || { echo "FILES.txt entry missing: $name"; return 1; }
