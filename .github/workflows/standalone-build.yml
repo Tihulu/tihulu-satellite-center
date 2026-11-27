@@ -158,8 +158,11 @@ jobs:
           python3 -c "from PyQt5 import QtWebEngineWidgets, QtWebChannel; print('QtWebEngine + QtWebChannel OK')"
       - name: "Real WebChannel shell smoke (real QWebEngineView, real bridge, offscreen)"
         env:
-          QTWEBENGINE_CHROMIUM_FLAGS: "--no-sandbox --disable-gpu --disable-dev-shm-usage"
-          QTWEBENGINE_DISABLE_SANDBOX: "1"
+          # No --no-sandbox and no QTWEBENGINE_DISABLE_SANDBOX here: the same shell
+          # smoke passes with the Chromium sandbox enabled, and a green CI badge is not
+          # a reason to turn a sandbox off. If the runner ever needs it, restore it
+          # deliberately and say why.
+          QTWEBENGINE_CHROMIUM_FLAGS: "--disable-gpu --disable-dev-shm-usage"
           LIBGL_ALWAYS_SOFTWARE: "1"
           PYTHONPATH: "${{ github.workspace }}/usr/share/tihulu-satellite-center"
           PYTHONDONTWRITEBYTECODE: "1"
