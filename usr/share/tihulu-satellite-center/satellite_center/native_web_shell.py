@@ -156,6 +156,9 @@ class NativeReceiver(QObject):
         self.completed.connect(self._finish)
         self.in_flight=set()
         self.radio_request=None
+        # Last folder the operator picked, so the next picker opens where they
+        # left off instead of the default capture folder every time.
+        self.last_folder=None
     reply=pyqtSignal(str,str)
 
     @pyqtSlot(str,str,str)
@@ -217,13 +220,22 @@ class NativeReceiver(QObject):
         # the GUI thread, so it can open the dialog directly and answer inline.
         if method == "choose_folder":
             start = args.get("start")
-            if not isinstance(start, str) or not start.strip():
+            requested = str(self.station.default_recording_dir) if self.station.default_recording_dir else None
+            for candidate in (start if isinstance(start, str) else None, self.last_folder, requested,
+                              str(self.station.archive)):
+                if candidate and str(candidate).strip() and Path(str(candidate)).is_dir():
+                    start = str(candidate)
+                    break
+            else:
                 start = str(self.station.archive)
             chosen = QFileDialog.getExistingDirectory(
                 self.parent(), "Folder for scheduled recordings", start)
+            if chosen:
+                self.last_folder = chosen
             self.reply.emit(request_id, json.dumps({
                 "ok": True, "folder": chosen or None,
-                "note": "cancelled by the operator" if not chosen else "operator chose a folder"}))
+                "note": "cancelled by the operator" if not chosen else "operator chose a folder",
+                "started_in": start}))
             return
         self.in_flight.add(request_id)
         if method in radio_methods:

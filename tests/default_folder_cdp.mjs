@@ -160,10 +160,18 @@ const run = async () => {
   }
   check("setting a folder applies it on the companion",
         typeof applied === "string" && applied.indexOf("captures") >= 0 && applied.indexOf("ISS-DEFAULT") > 0, applied);
-  check("the page label reports the applied folder",
-        (await waitForLabel("ISS-DEFAULT")).indexOf("ISS-DEFAULT") > 0);
+  const appliedLabel = await waitForLabel("ISS-DEFAULT");
+  check("the page label reports the applied folder", appliedLabel.indexOf("ISS-DEFAULT") > 0);
+  check("the label says where captures without their own folder go",
+        appliedLabel.indexOf("captures with no folder of their own go here") >= 0, appliedLabel);
   check("the value is persisted for the next start", stored() === applied, stored());
 
+  // A pick followed by no save must say so, which is the owner question: how do
+  // I know whether this was applied?
+  await evaluate(`(() => { const f = document.getElementById("default-folder-input"); f.value = "ANOTHER-UNSAVED"; f.dispatchEvent(new Event("input", { bubbles: true })); return 1; })()`);
+  const unsaved = await waitForLabel("Not saved yet", 5);
+  check("choosing a folder says it is not saved yet",
+        unsaved.indexOf("Not saved yet") >= 0, unsaved);
   await evaluate(`document.getElementById("default-folder-input").value = "../escape"`);
   await evaluate(`[...document.querySelectorAll("#default-folder-controls button")].find(b => b.textContent === "Set as default folder").click()`);
   const refused = await waitForLabel("Default folder not changed");

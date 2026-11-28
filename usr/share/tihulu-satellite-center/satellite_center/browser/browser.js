@@ -111,10 +111,18 @@ const nativeReceiver=()=>nativeLocal()||window.nativeRFTransport==="rtl_sdr";
           }catch(error){ defLabel.textContent='Folder picker failed: '+(error&&error.message||error); return; }
           if(answer&&answer.folder){
             folderInput.value=answer.folder;
-            defLabel.textContent='Chosen: '+answer.folder+' - press Set as default folder to apply it.';
+            defLabel.textContent='Chosen: '+answer.folder+' - not saved yet. Press Set as default folder to make it the default for captures that have no folder of their own.';
+          }else if(answer){
+            defLabel.textContent='No folder chosen - the default recording folder is unchanged.';
           }
         };
       }
+      // Typing is not saving: say so immediately, so the operator never has to guess
+      // whether the value in the field is the one that will be used.
+      folderInput.addEventListener('input',()=>{
+        const typed=folderInput.value.trim();
+        if(typed)defLabel.textContent='Not saved yet: '+typed+' - press Set as default folder to apply it.';
+      });
       const readState=async()=>overHttp
         ? nativeRequest('/api/status')
         : window.nativeScheduleStatus();
@@ -122,7 +130,7 @@ const nativeReceiver=()=>nativeLocal()||window.nativeRFTransport==="rtl_sdr";
         const state=await readState();
         const folder=state.hardware && state.hardware.default_recording_folder;
         defLabel.textContent=folder
-          ? ('Default recording folder: '+folder)
+          ? ('Default recording folder: '+folder+' - captures with no folder of their own go here.')
           : 'No default recording folder (uses captures/)';
         return state;
       };
