@@ -94,6 +94,10 @@ jobs:
         run: node tests/job_removal_cdp.mjs usr/share/tihulu-satellite-center
       - name: "Interactive DOM test: the global default recording folder (set, refuse, clear)"
         run: node tests/default_folder_cdp.mjs usr/share/tihulu-satellite-center
+      - name: "Interactive DOM test: per-job recording folder and drag & drop (needs public TLEs)"
+        run: node tests/recording_dir_cdp.mjs usr/share/tihulu-satellite-center
+      - name: "Interactive DOM test: editing a pending native schedule (web + native code path)"
+        run: node tests/edit_job_cdp.mjs usr/share/tihulu-satellite-center
 
   interactive-serve-removal-ui:
     runs-on: ubuntu-24.04
