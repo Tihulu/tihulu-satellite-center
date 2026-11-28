@@ -96,6 +96,25 @@ const nativeReceiver=()=>nativeLocal()||window.nativeRFTransport==="rtl_sdr";
       setBtn.textContent='Set as default folder';
       const clrBtn=document.createElement('button');clrBtn.type='button';clrBtn.className='secondary';
       clrBtn.textContent='Clear default folder';
+      // A web page cannot open the OS folder dialog, so in the installed desktop
+      // shell this asks the native side for a real picker and fills the field.
+      let pickBtn=null;
+      if(typeof window.nativeChooseFolder==='function'){
+        pickBtn=document.createElement('button');pickBtn.type='button';pickBtn.className='secondary';
+        pickBtn.textContent='Choose folder...';
+        pickBtn.title='Open a folder picker and put the chosen path in the field';
+        pickBtn.onclick=async()=>{
+          const current=defLabel.textContent.replace(/^Default recording folder:\s*/, '');
+          let answer=null;
+          try{
+            answer=await window.nativeChooseFolder(current.startsWith('/')?current:'');
+          }catch(error){ defLabel.textContent='Folder picker failed: '+(error&&error.message||error); return; }
+          if(answer&&answer.folder){
+            folderInput.value=answer.folder;
+            defLabel.textContent='Chosen: '+answer.folder+' - press Set as default folder to apply it.';
+          }
+        };
+      }
       const readState=async()=>overHttp
         ? nativeRequest('/api/status')
         : window.nativeScheduleStatus();
@@ -140,6 +159,7 @@ const nativeReceiver=()=>nativeLocal()||window.nativeRFTransport==="rtl_sdr";
         }finally{ clrBtn.disabled=false; }
       };
       holder.append(defLabel,folderInput,setBtn,clrBtn);
+      if(pickBtn)holder.append(pickBtn);
       // Outside the schedule form: the form keeps exactly one text input
       // so the recording-folder field stays unambiguous.
       host.append(holder);
