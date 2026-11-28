@@ -117,6 +117,12 @@ const nativeReceiver=()=>nativeLocal()||window.nativeRFTransport==="rtl_sdr";
           }
         };
       }
+      // Typing is not saving: say so immediately, so the operator never has to guess
+      // whether the value in the field is the one that will be used.
+      folderInput.addEventListener('input',()=>{
+        const typed=folderInput.value.trim();
+        if(typed)defLabel.textContent='Not saved yet: '+typed+' - press Set as default folder to apply it.';
+      });
       const readState=async()=>overHttp
         ? nativeRequest('/api/status')
         : window.nativeScheduleStatus();
