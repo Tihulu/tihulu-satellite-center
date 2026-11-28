@@ -13,5 +13,6 @@ export QT_QPA_PLATFORM_PLUGIN_PATH="$QT_PLUGIN_PATH/platforms"
 if [ -n "${WAYLAND_DISPLAY:-}" ]; then export QT_QPA_PLATFORM=xcb; fi
 export TIHULU_SATELLITE_DATA="${TIHULU_SATELLITE_DATA:-$HOME/.local/share/tihulu-satellite-center}"
 mkdir -p "$TIHULU_SATELLITE_DATA"
-cd "$HERE"
+# Do not chdir into the bundle: any file/folder dialog would then open in the
+# AppImage mount directory instead of the operator own folders.
 exec "$HERE/usr/bin/python3.12" -m satellite_center "$@"

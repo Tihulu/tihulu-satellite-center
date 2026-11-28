@@ -25,7 +25,7 @@ from urllib.request import Request, urlopen
 from PyQt5.QtCore import (
     QObject,QBuffer,QIODevice,QThreadPool,QRunnable,pyqtSignal,pyqtSlot,QUrl,QTimer,Qt,
 )
-from PyQt5.QtWidgets import QApplication,QMainWindow,QMessageBox
+from PyQt5.QtWidgets import QApplication,QFileDialog,QMainWindow,QMessageBox
 from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWebEngineCore import QWebEngineUrlScheme,QWebEngineUrlSchemeHandler
@@ -170,6 +170,7 @@ class NativeReceiver(QObject):
             "plan_candidates","plan_candidate_add","plan_candidate_remove",
             "clear_job","clear_finished_jobs",
             "set_default_folder","clear_default_folder",
+            "choose_folder",
         }:
             self.reply.emit(request_id,json.dumps({
                 "ok":False,"error":"Native command is not allowlisted"}))
@@ -212,6 +213,18 @@ class NativeReceiver(QObject):
                 self.reply.emit(request_id,json.dumps({
                     "ok":False,"error":"Native RF action canceled by operator"}))
                 return
+        # A folder picker is a native dialog, not radio work, and this slot runs on
+        # the GUI thread, so it can open the dialog directly and answer inline.
+        if method == "choose_folder":
+            start = args.get("start")
+            if not isinstance(start, str) or not start.strip():
+                start = str(self.station.archive)
+            chosen = QFileDialog.getExistingDirectory(
+                self.parent(), "Folder for scheduled recordings", start)
+            self.reply.emit(request_id, json.dumps({
+                "ok": True, "folder": chosen or None,
+                "note": "cancelled by the operator" if not chosen else "operator chose a folder"}))
+            return
         self.in_flight.add(request_id)
         if method in radio_methods:
             self.radio_request=request_id

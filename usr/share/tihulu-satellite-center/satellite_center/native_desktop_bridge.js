@@ -706,6 +706,9 @@
       // and clear it without leaving the page. The Station re-validates the path.
       window.nativeSetDefaultFolder=folder=>lookup("set_default_folder",{folder});
       window.nativeClearDefaultFolder=()=>lookup("clear_default_folder",{});
+      // Native folder picker for the recording-folder fields: a web page cannot
+      // open the OS dialog itself, so the shell does it and returns the path.
+      window.nativeChooseFolder=(start="")=>lookup("choose_folder",{start});
       window.nativeComputeStatus=()=>lookup('status').then(info=>info.compute);
       window.nativeCancelScheduledJob=job_id=>lookup('cancel_schedule',{job_id});
       window.nativeEditScheduledJob=(job_id,run_at,duration_seconds)=>
