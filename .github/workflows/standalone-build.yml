@@ -94,9 +94,21 @@ jobs:
         run: node tests/job_removal_cdp.mjs usr/share/tihulu-satellite-center
       - name: "Interactive DOM test: the global default recording folder (set, refuse, clear)"
         run: node tests/default_folder_cdp.mjs usr/share/tihulu-satellite-center
+      # The pass-planning suites need skyfield on the interpreter that runs the
+      # companion; the runner image does not ship it, so give them a venv.
+      - name: Provide an interpreter with skyfield for the pass-planning suites
+        run: |
+          set -euo pipefail
+          python3 -m venv .orbit-venv
+          .orbit-venv/bin/pip install --quiet --disable-pip-version-check skyfield
+          .orbit-venv/bin/python -c "import skyfield; print(skyfield.__version__)"
       - name: "Interactive DOM test: per-job recording folder and drag & drop (needs public TLEs)"
+        env:
+          SAT_PYTHON: "${{ github.workspace }}/.orbit-venv/bin/python"
         run: node tests/recording_dir_cdp.mjs usr/share/tihulu-satellite-center
       - name: "Interactive DOM test: editing a pending native schedule (web + native code path)"
+        env:
+          SAT_PYTHON: "${{ github.workspace }}/.orbit-venv/bin/python"
         run: node tests/edit_job_cdp.mjs usr/share/tihulu-satellite-center
 
   interactive-serve-removal-ui:
